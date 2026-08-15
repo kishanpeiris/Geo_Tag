@@ -1,4 +1,2581 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field GeoTag Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<style>
+  :root{
+    --bg:#0E141B;
+    --bg-panel:#151D26;
+    --bg-elevated:#1C2530;
+    --bg-inset:#0B1015;
+    --border:#28323F;
+    --border-soft:#1F2833;
+    --text:#E9ECEF;
+    --text-dim:#8D99A6;
+    --text-faint:#5C6875;
+    --amber:#F2A93B;
+    --amber-dim:#B37E27;
+    --teal:#4FA6BA;
+    --teal-dim:#2E6270;
+    --green:#5FB380;
+    --red:#E1685A;
+    --mono:'Space Mono', ui-monospace, monospace;
+    --sans:'Inter', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    position:relative;
+  }
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 15% -5%, rgba(79,166,186,0.10), transparent 60%),
+      radial-gradient(ellipse 50% 35% at 100% 0%, rgba(242,169,59,0.07), transparent 60%);
+    pointer-events:none;
+    z-index:0;
+  }
+  svg.contours{position:fixed; inset:0; width:100%; height:100%; opacity:0.05; pointer-events:none; z-index:0;}
+  .wrap{position:relative; z-index:1; max-width:900px; margin:0 auto; padding:28px 20px 90px;}
+  .wrap.hidden{display:none;}
+
+  /* ---- login overlay ---- */
+  #loginOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
+  #loginOverlay.hidden{display:none;}
+  #listAssignOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
+  #listAssignOverlay.hidden{display:none;}
+  .login-card{width:100%; max-width:380px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:28px 26px;}
+  .login-card h2{margin:0 0 4px; font-size:17px; font-weight:800;}
+  .login-card p.sub{margin:0 0 20px; font-size:12.5px; color:var(--text-dim);}
+  .login-tabs{display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--border-soft);}
+  .login-tab{background:none; border:none; color:var(--text-faint); font-family:var(--sans); font-weight:600; font-size:12.5px; padding:8px 4px 10px; cursor:pointer; border-bottom:2px solid transparent;}
+  .login-tab.active{color:var(--amber); border-bottom-color:var(--amber);}
+  .login-field{margin-bottom:12px;}
+  .login-error{font-size:12px; color:var(--red); margin:10px 0 0; min-height:1px; line-height:1.5;}
+  .login-links{display:flex; justify-content:space-between; align-items:center; margin-top:14px;}
+  .login-links button{background:none; border:none; color:var(--teal); font-size:11.5px; cursor:pointer; padding:0; font-family:var(--sans);}
+  .login-divider{display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:11px; margin-bottom:16px;}
+  .login-divider::before, .login-divider::after{content:""; flex:1; height:1px; background:var(--border-soft);}
+  .user-badge{display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-dim); font-family:var(--mono);}
+  .user-badge .dot{width:7px; height:7px; border-radius:50%; background:var(--green); flex-shrink:0;}
+  .user-badge button{background:none; border:none; color:var(--text-faint); text-decoration:underline; cursor:pointer; font-family:var(--sans); font-size:11.5px; padding:0;}
+  .header-right{display:flex; flex-direction:column; align-items:flex-end; gap:10px;}
+
+  header.top{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:26px; flex-wrap:wrap;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{
+    width:42px; height:42px; border:1.5px solid var(--amber); border-radius:3px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    background:repeating-linear-gradient(135deg, rgba(242,169,59,0.12) 0 2px, transparent 2px 8px);
+  }
+  .brand-mark svg{width:22px; height:22px;}
+  .brand h1{font-size:19px; margin:0; letter-spacing:0.01em; font-weight:800;}
+  .brand p{margin:2px 0 0; font-size:12px; color:var(--text-dim); font-family:var(--mono); letter-spacing:0.03em;}
+  .top-tabs{display:flex; gap:8px;}
+  .tab-btn{
+    background:var(--bg-panel); border:1px solid var(--border); color:var(--text-dim);
+    font-family:var(--mono); font-size:11.5px; letter-spacing:0.02em; padding:8px 12px; border-radius:4px;
+    cursor:pointer; display:flex; align-items:center; gap:6px; transition:all .15s;
+  }
+  .tab-btn:hover{color:var(--text); border-color:var(--teal-dim);}
+  .tab-btn.active{color:var(--amber); border-color:var(--amber-dim); background:rgba(242,169,59,0.07);}
+  .badge-count{background:var(--bg-elevated); color:var(--text-dim); font-size:10px; padding:1px 6px; border-radius:10px;}
+
+  .panel{
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:8px;
+    padding:22px 22px 24px; margin-bottom:16px;
+  }
+  .panel-head{display:flex; align-items:baseline; gap:10px; margin-bottom:16px;}
+  .eyebrow{font-family:var(--mono); color:var(--amber); font-size:12px; letter-spacing:0.08em; border:1px solid var(--amber-dim); border-radius:3px; padding:1px 7px;}
+  .panel-head h2{font-size:15.5px; margin:0; font-weight:700;}
+  .panel-sub{font-size:12.5px; color:var(--text-dim); margin:-8px 0 16px; line-height:1.5;}
+
+  label.field-label{display:block; font-size:11.5px; font-weight:600; color:var(--text-dim); margin-bottom:6px; letter-spacing:0.02em; text-transform:uppercase;}
+  .row{display:flex; gap:14px; flex-wrap:wrap;}
+  .row > div{flex:1; min-width:200px;}
+  input[type=text], input[type=number], input[type=search], input[type=password], input[type=email]{
+    width:100%; background:var(--bg-inset); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:5px; font-family:var(--sans); font-size:13.5px; outline:none;
+    box-sizing:border-box; height:40px;
+  }
+  input:focus{border-color:var(--teal);}
+  input[readonly]{color:var(--text-dim);}
+  input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus{
+    -webkit-text-fill-color: var(--text) !important;
+    -webkit-box-shadow: 0 0 0px 1000px var(--bg-inset) inset !important;
+    box-shadow: 0 0 0px 1000px var(--bg-inset) inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+    caret-color: var(--text);
+  }
+  .mono-input{font-family:var(--mono) !important; font-size:13px !important;}
+
+  .stamp{
+    font-family:var(--mono); border:1.5px dashed var(--amber-dim); border-radius:6px; padding:12px 16px;
+    color:var(--amber); background:rgba(242,169,59,0.05); font-size:12.5px; line-height:1.8; margin-top:14px;
+    transform:rotate(-0.4deg);
+  }
+  .stamp b{color:var(--text);}
+  .stamp .label{color:var(--text-faint); text-transform:uppercase; font-size:10px; letter-spacing:0.08em;}
+
+  .autocomplete{position:relative;}
+  .ac-list{
+    position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--bg-elevated);
+    border:1px solid var(--border); border-radius:6px; max-height:260px; overflow-y:auto; z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4); display:none;
+  }
+  .ac-list.show{display:block;}
+  .ac-item{padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--border-soft); font-size:13px;}
+  .ac-item:last-child{border-bottom:none;}
+  .ac-item:hover, .ac-item.hi{background:rgba(79,166,186,0.12);}
+  .ac-item .code{font-family:var(--mono); color:var(--amber); font-size:12px;}
+  .ac-item .addr{color:var(--text-dim); font-size:11.5px; margin-top:2px;}
+  .ac-empty{padding:14px; color:var(--text-faint); font-size:12.5px; text-align:center;}
+
+  .btn{
+    font-family:var(--sans); font-weight:600; font-size:13px; padding:10px 16px; border-radius:5px;
+    border:1px solid var(--border); background:var(--bg-elevated); color:var(--text); cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px; transition:all .15s;
+  }
+  .btn:hover{border-color:var(--teal);}
+  .btn:disabled{opacity:0.4; cursor:not-allowed;}
+  .btn.primary{background:var(--amber); border-color:var(--amber); color:#1A1204;}
+  .btn.primary:hover{background:#ffbc52;}
+  .btn.primary:disabled{background:var(--bg-elevated); color:var(--text-faint); border-color:var(--border);}
+  .btn.ghost{background:transparent;}
+  .btn.small{padding:6px 10px; font-size:12px;}
+  .btn.danger{color:var(--red); border-color:rgba(225,104,90,0.4);}
+  .btn.danger:hover{background:rgba(225,104,90,0.1);}
+
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:8px; padding:34px 20px; text-align:center;
+    color:var(--text-dim); font-size:13px; transition:all .15s; cursor:pointer;
+  }
+  .dropzone.drag{border-color:var(--teal); background:rgba(79,166,186,0.06); color:var(--text);}
+  .dropzone svg{width:30px; height:30px; margin-bottom:10px; opacity:0.6;}
+  .dz-actions{display:flex; gap:10px; justify-content:center; margin-top:14px; flex-wrap:wrap;}
+
+  .thumb-toolbar{display:flex; align-items:center; justify-content:space-between; margin:16px 0 10px; flex-wrap:wrap; gap:10px;}
+  .thumb-toolbar .left{display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--text-dim);}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px;}
+  .thumb{position:relative; border-radius:6px; overflow:hidden; border:1.5px solid var(--border); background:var(--bg-inset); aspect-ratio:1;}
+  .thumb.sel{border-color:var(--teal);}
+  .thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .thumb .chk{
+    position:absolute; top:6px; left:6px; width:18px; height:18px; border-radius:4px; border:1.5px solid rgba(255,255,255,0.7);
+    background:rgba(14,20,27,0.55); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .thumb.sel .chk{background:var(--teal); border-color:var(--teal);}
+  .thumb .chk svg{width:11px; height:11px; display:none;}
+  .thumb.sel .chk svg{display:block;}
+  .thumb .rm{
+    position:absolute; top:6px; right:6px; width:18px; height:18px; border-radius:4px; background:rgba(14,20,27,0.65);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--red); font-size:13px; line-height:1;
+  }
+  .thumb .name{position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent, rgba(0,0,0,0.75)); font-size:9.5px; padding:12px 6px 5px; color:#fff; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .thumb .warn-tag{position:absolute; bottom:20px; left:6px; background:var(--red); color:#fff; font-size:8.5px; padding:1px 5px; border-radius:3px; font-family:var(--mono);}
+
+  .autosave-row{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:12px 14px; transition:all .15s;}
+  .autosave-row.required{border-color:var(--red); background:rgba(225,104,90,0.07);}
+  .autosave-status-text{font-size:12.5px; color:var(--text-dim);}
+  .autosave-row.required .autosave-status-text{color:var(--red); font-weight:600;}
+  .progress-wrap{margin-top:16px; display:none;}
+  .progress-wrap.show{display:block;}
+  .progress-bar{height:8px; background:var(--bg-inset); border-radius:6px; overflow:hidden; border:1px solid var(--border);}
+  .progress-fill{height:100%; width:0%; background:linear-gradient(90deg, var(--teal), var(--amber)); transition:width .2s;}
+  .progress-label{font-size:11.5px; color:var(--text-dim); margin-top:6px; font-family:var(--mono);}
+
+  .result-box{margin-top:16px; padding:16px; border-radius:6px; border:1px solid var(--green); background:rgba(95,179,128,0.08); display:none;}
+  .result-box.show{display:block;}
+  .result-box h3{margin:0 0 6px; font-size:13.5px; color:var(--green);}
+  .result-box p{margin:0; font-size:12.5px; color:var(--text-dim); line-height:1.6;}
+
+  .note{font-size:11.5px; color:var(--text-faint); line-height:1.6; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-soft);}
+  .note b{color:var(--text-dim);}
+
+  .drawer{display:none;}
+  .drawer.show{display:block;}
+
+  table.db-table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  table.db-table th{text-align:left; font-family:var(--mono); font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; padding:6px 8px; border-bottom:1px solid var(--border);}
+  table.db-table td{padding:6px 8px; border-bottom:1px solid var(--border-soft); vertical-align:top;}
+  table.db-table td input{background:transparent; border:1px solid transparent; padding:4px 6px; font-size:12.5px; color:var(--text); width:100%; border-radius:4px; font-family:var(--sans);}
+  table.db-table td input:hover, table.db-table td input:focus{border-color:var(--border); background:var(--bg-inset);}
+  table.db-table td.code input{font-family:var(--mono); color:var(--amber);}
+  .db-scroll{max-height:340px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:6px; margin-top:10px;}
+  .upload-modes{display:flex; gap:16px; margin:12px 0; font-size:12.5px; color:var(--text-dim);}
+  .upload-modes label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+
+  .log-item{padding:12px 0; border-bottom:1px solid var(--border-soft); font-size:12.5px;}
+  .log-item:last-child{border-bottom:none;}
+  .log-item .top-row{display:flex; justify-content:space-between; gap:10px; margin-bottom:4px;}
+  .log-item .wo{font-family:var(--mono); color:var(--amber); font-weight:700;}
+  .log-item .ts{color:var(--text-faint); font-size:11px;}
+  .log-item .addr{color:var(--text-dim);}
+  .log-item .meta{color:var(--text-faint); font-size:11px; margin-top:3px; font-family:var(--mono);}
+  .empty-state{text-align:center; padding:30px 10px; color:var(--text-faint); font-size:12.5px;}
+
+  .role-badge{font-family:var(--mono); font-size:10px; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; text-transform:uppercase; display:inline-block;}
+  .role-badge.admin{color:var(--amber); background:rgba(242,169,59,0.12); border:1px solid var(--amber-dim);}
+  .role-badge.staff{color:var(--teal); background:rgba(79,166,186,0.12); border:1px solid var(--teal-dim);}
+  .role-badge.trade{color:var(--text-dim); background:rgba(141,153,166,0.12); border:1px solid var(--border);}
+  .status-pill{font-family:var(--mono); font-size:10px; letter-spacing:0.03em; display:inline-flex; align-items:center; gap:5px;}
+  .status-pill .dot{width:6px; height:6px; border-radius:50%; display:inline-block;}
+  .status-pill.active .dot{background:var(--green);}
+  .status-pill.active{color:var(--green);}
+  .status-pill.pending .dot{background:var(--text-faint);}
+  .status-pill.pending{color:var(--text-faint);}
+  .user-actions{display:flex; gap:6px; flex-wrap:wrap;}
+  .audit-item{padding:10px 0; border-bottom:1px solid var(--border-soft); font-size:12px;}
+  .audit-item:last-child{border-bottom:none;}
+  .audit-item .top-row{display:flex; justify-content:space-between; gap:10px;}
+  .audit-item .kind{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:3px; text-transform:uppercase;}
+  .audit-item .kind.login{color:var(--teal); border:1px solid var(--teal-dim);}
+  .audit-item .kind.geotag{color:var(--amber); border:1px solid var(--amber-dim);}
+  .audit-item .ts{color:var(--text-faint); font-size:11px;}
+  .audit-item .detail{color:var(--text-dim); margin-top:3px; font-family:var(--mono); font-size:11px;}
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--bg-elevated);
+    border:1px solid var(--border); padding:11px 18px; border-radius:6px; font-size:12.5px; opacity:0; pointer-events:none;
+    transition:all .25s; z-index:100; max-width:90vw;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .toast.err{border-color:var(--red); color:var(--red);}
+  .toast.ok{border-color:var(--green); color:var(--green);}
+
+  .flex-between{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border); border-radius:4px;}
+</style>
+</head>
+<body>
+<svg class="contours" viewBox="0 0 900 1200" preserveAspectRatio="xMidYMid slice">
+  <g fill="none" stroke="#4FA6BA" stroke-width="1">
+    <path d="M-50,150 C150,80 300,220 500,150 S800,80 950,180"/>
+    <path d="M-50,220 C150,150 300,290 500,220 S800,150 950,250"/>
+    <path d="M-50,290 C150,220 300,360 500,290 S800,220 950,320"/>
+    <path d="M-50,700 C150,620 320,780 520,700 S820,620 950,720"/>
+    <path d="M-50,770 C150,690 320,850 520,770 S820,690 950,790"/>
+    <path d="M-50,840 C150,760 320,920 520,840 S820,760 950,860"/>
+  </g>
+</svg>
+
+<div id="loginOverlay">
+  <div class="login-card">
+    <h2 id="loginHeading">Sign in to Field GeoTag Kit</h2>
+    <p class="sub" id="loginSub">Use the username and password your Admin or Staff manager gave you.</p>
+
+    <form id="loginForm">
+      <div class="login-field">
+        <label class="field-label">Username</label>
+        <input type="text" id="loginUsername" required autocomplete="username" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="login-field">
+        <label class="field-label">Password</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <div class="login-field" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="rememberLoginCheck" style="width:auto; margin:0;">
+        <label for="rememberLoginCheck" style="font-size:11.5px; color:var(--text-dim); text-transform:none; font-weight:400; letter-spacing:0; margin:0; cursor:pointer;">Remember my login on this device</label>
+      </div>
+      <button type="submit" class="btn primary" id="loginSubmitBtn" style="width:100%; justify-content:center;">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+    <div class="login-links">
+      <span style="font-size:11.5px; color:var(--text-faint);">Forgot your password? Contact your Switched On Housing representative to recover it — passwords are only ever reset by an Admin or Staff account.</span>
+    </div>
+  </div>
+</div>
+
+<div id="listAssignOverlay" class="hidden">
+  <div class="login-card">
+    <h2>Which region are you working in?</h2>
+    <p class="sub">Your account isn't linked to a region yet. Pick one region, or both if you work across both — this is remembered for next time, and only Admin (or Staff, for Trade accounts) can change it later.</p>
+    <div class="login-field">
+      <label class="field-label">Region</label>
+      <select id="listAssignSelect" class="mono-input" style="width:100%;"></select>
+    </div>
+    <button type="button" class="btn primary" id="listAssignConfirmBtn" style="width:100%; justify-content:center;">Continue</button>
+    <div class="login-error" id="listAssignError"></div>
+  </div>
+</div>
+
+<div class="wrap hidden" id="mainWrap">
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#F2A93B" stroke-width="1.6"><path d="M12 21s7-7.2 7-12a7 7 0 10-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.4"/></svg>
+      </div>
+      <div>
+        <h1>Field GeoTag Kit</h1>
+        <p>NZ PROPERTY PHOTO GEOTAGGING</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="user-badge"><span class="dot"></span><span id="userEmailLabel"></span><button id="signOutBtn">Sign out</button></div>
+      <div class="top-tabs">
+        <button class="tab-btn active" data-tab="main">Job</button>
+        <button class="tab-btn" data-tab="db">Property DB <span class="badge-count" id="dbCount">0</span></button>
+        <button class="tab-btn" data-tab="log">Activity Log <span class="badge-count" id="logCount">0</span></button>
+        <button class="tab-btn" data-tab="users" id="usersTabBtn" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
+        <button class="tab-btn" data-tab="audit" id="auditTabBtn" style="display:none;">Audit Log</button>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ===================== MAIN TAB ===================== -->
+  <div class="drawer show" id="tab-main">
+
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">01</span><h2>Job details</h2></div>
+      <div class="row">
+        <div>
+          <label class="field-label">Work order number</label>
+          <input type="text" id="woNumber" placeholder="e.g. WO-24815" class="mono-input">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">02</span><h2>Property lookup</h2></div>
+      <div class="panel-sub">Search by property ID or address. Selecting a match looks up its coordinates automatically.</div>
+      <div class="autocomplete">
+        <label class="field-label">Property ID / address</label>
+        <input type="search" id="propSearch" placeholder="Start typing a property ID or address…" class="mono-input" autocomplete="off">
+        <div class="ac-list" id="acList"></div>
+      </div>
+
+      <div id="propResolved" style="display:none;">
+        <div class="stamp" id="stampBox"></div>
+        <div style="margin-top:14px;">
+          <label class="field-label">Address used for lookup <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(edit and re-run if the geocoder can't find it)</span></label>
+          <input type="text" id="addressQueryField" class="mono-input">
+        </div>
+        <div class="row" style="margin-top:14px;">
+          <div>
+            <label class="field-label">Latitude</label>
+            <input type="text" id="latField" class="mono-input" placeholder="e.g. -41.28664">
+          </div>
+          <div>
+            <label class="field-label">Longitude</label>
+            <input type="text" id="lonField" class="mono-input" placeholder="e.g. 174.77557">
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn small" id="reLookupBtn">↻ Look up again</button>
+          <span id="geoStatus" style="font-size:11.5px; color:var(--text-faint); align-self:center;"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">03</span><h2>Photos</h2></div>
+      <div class="panel-sub">Drag & drop images or a whole folder, or use the buttons below. JPEG photos get GPS EXIF data written in; other formats are bundled untagged.</div>
+
+      <div class="dropzone" id="dropzone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#8D99A6" stroke-width="1.5"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        <div>Drop images or a folder here</div>
+        <div class="dz-actions">
+          <button class="btn small" id="pickFilesBtn">Choose Files</button>
+          <button class="btn small" id="pickFolderBtn">Choose Folder</button>
+        </div>
+      </div>
+      <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+      <input type="file" id="folderInput" multiple webkitdirectory style="display:none">
+
+      <div id="thumbArea" style="display:none;">
+        <div class="thumb-toolbar">
+          <div class="left">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="selectAllChk"> Select all</label>
+            <span id="selCount">0 of 0 selected</span>
+          </div>
+          <button class="btn small ghost danger" id="clearImagesBtn">Clear all</button>
+        </div>
+        <div class="grid" id="thumbGrid"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">04</span><h2>Process & export</h2></div>
+      <div class="panel-sub">Writes GPS location into the selected photos. "Save to folder" saves the tagged files straight into a job subfolder — no zip. "Download ZIP" packages them into a single zip named with the work order and property ID.</div>
+
+      <div class="autosave-row" id="autoSaveRow">
+        <div>
+          <label class="field-label">Auto-save folder</label>
+          <div class="autosave-status-text" id="autoSaveStatus">Not selected — choose a folder to enable "save to folder". Until then, only "Download ZIP" is available.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small" id="chooseFolderBtn">Choose folder</button>
+          <button class="btn small ghost danger" id="clearFolderBtn" style="display:none;">Clear</button>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+        <button class="btn primary" id="processToFolderBtn" disabled>Apply location & save to folder</button>
+        <button class="btn" id="processBtn" disabled>Apply location & download ZIP</button>
+      </div>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">Processing…</div>
+      </div>
+      <div class="result-box" id="resultBox">
+        <h3>✓ Done</h3>
+        <p id="resultText"></p>
+      </div>
+      <div class="note"><b>Note:</b> location lookups use OpenStreetMap's public geocoder and require your browser to reach the internet. If a lookup fails, enter latitude/longitude manually above. GPS EXIF writing works on JPEG files; other image types are included without location data. The property database, geocode cache and activity log are shared with everyone signed in to this account. The auto-save folder is remembered only on this device, for your account. "Save to folder" only becomes available once you've explicitly chosen a folder above — nothing is written anywhere without that.</div>
+    </div>
+  </div>
+
+  <!-- ===================== DB TAB ===================== -->
+  <div class="drawer" id="tab-db">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">DB</span><h2>Property database</h2></div>
+      <div class="panel-sub" id="dbPanelSub">Each trade region has its own property list; Admin and Staff can view any region, or both merged. Update the active list by uploading an Excel/CSV file, or edit rows directly below.</div>
+
+      <div class="autosave-row" id="listSelectorBox" style="margin-bottom:16px;"></div>
+
+      <div class="flex-between">
+        <div style="font-size:12.5px; color:var(--text-dim);"><span id="dbCount2">0</span> properties loaded</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshDbBtn">↻ Refresh</button>
+          <button class="btn small" id="uploadDbBtn">Upload Excel/CSV</button>
+          <button class="btn small ghost" id="exportDbBtn">Export CSV</button>
+          <button class="btn small ghost danger" id="clearDbBtn">Clear all</button>
+        </div>
+      </div>
+      <input type="file" id="dbFileInput" accept=".xlsx,.xls,.csv" style="display:none">
+
+      <div id="uploadModeBox" style="display:none;">
+        <div class="upload-modes">
+          <label><input type="radio" name="uploadMode" value="merge" checked> Merge / update existing</label>
+          <label><input type="radio" name="uploadMode" value="replace"> Replace entire list</label>
+        </div>
+        <div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;" id="uploadPreview"></div>
+        <button class="btn small primary" id="confirmUploadBtn">Apply</button>
+        <button class="btn small ghost" id="cancelUploadBtn">Cancel</button>
+      </div>
+
+      <div class="flex-between" style="margin-top:18px;">
+        <label class="field-label" style="margin:0;">Search / filter</label>
+        <button class="btn small" id="addRowBtn">+ Add property</button>
+      </div>
+      <input type="search" id="dbSearch" placeholder="Filter by property ID or address…" style="margin-top:6px;">
+
+      <div class="db-scroll">
+        <table class="db-table">
+          <thead><tr><th style="width:32%">Property ID</th><th>Address</th><th style="width:40px"></th></tr></thead>
+          <tbody id="dbTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== LOG TAB ===================== -->
+  <div class="drawer" id="tab-log">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">LOG</span><h2>Activity log</h2></div>
+      <div class="panel-sub">A shared record of every batch processed, by work order — visible to Admin and Staff.</div>
+      <div class="flex-between" style="margin-bottom:10px;" id="logControls">
+        <span style="font-size:12.5px; color:var(--text-dim);"><span id="logCount2">0</span> entries</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshLogBtn">↻ Refresh</button>
+          <button class="btn small ghost" id="exportLogBtn">Export CSV</button>
+          <button class="btn small ghost danger" id="clearLogBtn">Clear log</button>
+        </div>
+      </div>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <!-- ===================== USERS TAB (Admin / Staff) ===================== -->
+  <div class="drawer" id="tab-users">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">USR</span><h2 id="usersPanelTitle">Users</h2></div>
+      <div class="panel-sub" id="usersPanelSub">Add and manage accounts. Every account is created here — there's no self-signup.</div>
+
+      <div class="flex-between" style="margin-bottom:14px;">
+        <div style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</div>
+        <button class="btn small primary" id="addUserBtn">+ Add user</button>
+      </div>
+
+      <div id="addUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+        <div class="row">
+          <div>
+            <label class="field-label">Username</label>
+            <input type="text" id="newUserUsername" class="mono-input" placeholder="e.g. jsmith" autocapitalize="off" spellcheck="false">
+          </div>
+          <div>
+            <label class="field-label">Password</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="newUserPassword" class="mono-input" placeholder="password">
+              <button type="button" class="btn small ghost" id="genPasswordBtn">Generate</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <div id="newUserRoleBox">
+            <label class="field-label">Role</label>
+            <select id="newUserRole" class="mono-input" style="width:100%;">
+              <option value="trade">Trade</option>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div id="newUserListBox">
+            <label class="field-label">Region</label>
+            <select id="newUserList" class="mono-input" style="width:100%;"></select>
+          </div>
+        </div>
+        <div class="row" id="newUserTradeFieldsBox" style="margin-top:12px;">
+          <div>
+            <label class="field-label">Company name <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(required for Trade)</span></label>
+            <input type="text" id="newUserCompany" class="mono-input" placeholder="e.g. Smith Roofing Ltd">
+          </div>
+          <div>
+            <label class="field-label">Mobile <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+            <input type="text" id="newUserMobile" class="mono-input" placeholder="e.g. 021 234 5678">
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <div>
+            <label class="field-label">Email address <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+            <input type="email" id="newUserEmail" class="mono-input" placeholder="e.g. name@company.co.nz">
+          </div>
+          <div></div>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:10px;">
+          <button class="btn small primary" id="createUserBtn">Create account</button>
+          <button class="btn small ghost" id="cancelAddUserBtn">Cancel</button>
+        </div>
+        <div class="login-error" id="addUserError"></div>
+      </div>
+
+      <div id="emailTemplateBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+        <label class="field-label">Login details email <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(edit before sending)</span></label>
+        <textarea id="emailTemplateBody" style="width:100%; min-height:140px; background:var(--bg-panel); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:10px 12px; font-family:var(--sans); font-size:13px;"></textarea>
+        <div style="margin-top:10px; display:flex; gap:10px;">
+          <a class="btn small primary" id="openMailBtn" href="#" style="text-decoration:none;">Open in email client</a>
+          <button class="btn small ghost" id="closeEmailTemplateBtn">Close</button>
+        </div>
+        <div class="note" style="margin-top:10px; padding-top:0; border-top:none;">This only works right after creating or resetting an account — the plaintext password is never stored, so it's only available here for a moment.</div>
+      </div>
+
+      <div class="db-scroll" style="max-height:none;">
+        <table class="db-table">
+          <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:210px"></th></tr></thead>
+          <tbody id="usersTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== AUDIT LOG TAB (Admin / Staff) ===================== -->
+  <div class="drawer" id="tab-audit">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">AUD</span><h2>Audit log</h2></div>
+      <div class="panel-sub">Every login, and every photo geotagged — work order, property, coordinates, filename and file type, per image. Rolling 30-day window; older entries age out automatically.</div>
+      <div class="flex-between" style="margin-bottom:10px;">
+        <span style="font-size:12.5px; color:var(--text-dim);"><span id="auditCount2">0</span> entries · <span id="auditRange"></span></span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshAuditBtn">↻ Refresh</button>
+          <button class="btn small ghost" id="exportAuditCsvBtn">Export CSV</button>
+          <button class="btn small ghost" id="exportAuditZipBtn">Export ZIP</button>
+        </div>
+      </div>
+      <div id="auditList"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =============================================================================
+   FIREBASE SETUP — do this once before deploying:
+   1. Go to https://console.firebase.google.com and create a free project.
+   2. Build > Authentication > Get started > enable "Email/Password".
+      (Accounts use a made-up username, not a real email — see USERNAME LOGIN
+      below for how that works under the hood. You don't need to touch this
+      again after enabling the provider.)
+   3. Build > Firestore Database > Create database (production mode is fine —
+      the security rules below lock it down).
+   4. Project settings (gear icon) > General > "Your apps" > Add app > Web (</>)
+      — copy the firebaseConfig object it gives you into FIREBASE_CONFIG below.
+   5. Authentication > Settings > Authorized domains > add your GitHub Pages
+      domain (e.g. yourorg.github.io) so login works once deployed.
+   6. Firestore Database > Rules > paste this, then Publish:
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+
+            function isSignedIn() { return request.auth != null; }
+            function myDoc() {
+              return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+            }
+            function myRole() { return isSignedIn() ? myDoc().role : null; }
+            function isAdmin() { return myRole() == 'admin'; }
+            function isStaffRole() { return myRole() == 'staff'; }
+            function isStaffOrAdmin() { return isStaffRole() || isAdmin(); }
+            // Admin is always both regions; everyone else has an explicit
+            // `regions` array. Staff is scoped to their own region(s) —
+            // NOT a blanket "see everything" role — matching the app's
+            // per-region walling for accounts and properties alike.
+            function myRegions() {
+              return isAdmin() ? ['R07','R10'] : (isSignedIn() ? myDoc().regions : []);
+            }
+            function inMyRegion(listId) { return listId in myRegions(); }
+            function regionsOverlap(targetRegions) { return myRegions().hasAny(targetRegions); }
+
+            match /users/{uid} {
+              allow read: if isSignedIn() && (
+                request.auth.uid == uid ||
+                isAdmin() ||
+                (isStaffRole() && resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
+              );
+              allow create: if isSignedIn() && (
+                isAdmin() ||
+                (isStaffRole() && request.resource.data.role == 'trade' && regionsOverlap(request.resource.data.regions))
+              );
+              allow update: if isSignedIn() && (
+                request.auth.uid == uid ||
+                isAdmin() ||
+                (isStaffRole() && resource.data.role == 'trade' && request.resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
+              );
+              allow delete: if isSignedIn() && (
+                isAdmin() ||
+                (isStaffRole() && resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
+              );
+            }
+
+            match /usernames/{name} {
+              // Used only to check "is this username already taken" before
+              // creating an account, and to look up a user's uid by username.
+              allow read: if isSignedIn();
+              allow write: if isSignedIn() && isStaffOrAdmin();
+            }
+
+            match /property_lists/{listId} {
+              // Trade and Staff can only read regions they're assigned to;
+              // Admin can read either. Only Admin, or Staff assigned to
+              // that specific region, can write (add/edit/upload) to it —
+              // Trade accounts never get write access at all.
+              allow read: if isAdmin() || (isSignedIn() && inMyRegion(listId));
+              allow write: if isAdmin() || (isStaffRole() && inMyRegion(listId));
+              match /chunks/{chunkId} {
+                allow read: if isAdmin() || (isSignedIn() && inMyRegion(listId));
+                allow write: if isAdmin() || (isStaffRole() && inMyRegion(listId));
+              }
+            }
+
+            match /geocode_cache/{code} {
+              allow read, write: if isSignedIn();
+            }
+
+            match /activity_log/{entryId} {
+              allow read: if isStaffOrAdmin();
+              allow create: if isSignedIn();
+              allow update, delete: if isStaffOrAdmin();
+            }
+
+            match /audit_log/{entryId} {
+              allow read: if isStaffOrAdmin();
+              allow create: if isSignedIn();
+              allow update, delete: if isStaffOrAdmin();
+            }
+          }
+        }
+      This enforces real separation between the two trade regions — not
+      just hidden UI — so a signed-in trade user genuinely cannot read
+      the other region's property list, write to any property list at
+      all (only Admin/Staff can add properties), or read the shared
+      activity log, audit log, or other users' accounts, even via direct
+      Firestore calls.
+   7. Firestore Database > Indexes (or "TTL") tab > create a TTL policy on
+      collection "audit_log", field "expiresAt". This is what gives the
+      audit log its rolling 30-day window — Firestore auto-deletes entries
+      once their expiresAt timestamp passes, no client code needed. Deletion
+      typically happens within 24 hours of expiry, not instantly.
+
+   THREE ACCOUNT TYPES — role lives on users/{uid}.role, set only by Admin
+   (or Staff, for trade accounts) at creation time. It is never inferred
+   from a username or email pattern:
+     - "admin"  — full access: create/remove any account (Admin, Staff or
+       Trade), reset any password, everything Staff can do.
+     - "staff"  — can create/remove Trade accounts and reset Trade
+       passwords only; sees both regions' property lists (or merged) and
+       the shared Activity Log and Audit Log; can add, edit, and upload
+       properties; cannot touch other Staff/Admin accounts.
+     - "trade"  — signs in with an Admin/Staff-issued username + password;
+       assigned to exactly one of the two fixed regions (Region 07 —
+       Hawke's Bay, Gisborne, Manawatu — or Region 10 — Christchurch,
+       TOTS) and walled off from the other; read-only view of their
+       region's property list (only Admin/Staff can add or change
+       properties); no access-management UI at all.
+   There is no self-signup — every account is created from the "Users" tab
+   by an existing Admin or Staff account.
+
+   USERNAME LOGIN — Firebase Auth is built around email/password, so under
+   the hood each username is mapped to a fake, never-emailed address of the
+   form "<username>@fieldgeotag.internal" purely so Firebase Auth has
+   something to key on. Nobody needs to know this — the UI only ever shows
+   plain usernames. This is also why the old "Forgot password?" self-service
+   flow is gone: a password-reset email would go nowhere, since that address
+   isn't real. Resets are done by an Admin or Staff from the Users tab
+   instead (see ADMIN PASSWORD RESET below).
+
+   BOOTSTRAPPING THE FIRST ADMIN — the Users tab can only be used by
+   someone who's already an Admin, so the very first Admin account has to
+   be created by hand, once, directly in the Firebase console:
+   1. Authentication > Users > Add user.
+        Email:    kishanp@fieldgeotag.internal
+        Password: kipeeric
+   2. Copy the new user's UID (shown in the Users list after creation).
+   3. Firestore Database > Start collection > collection ID "users" >
+      document ID = that UID, with these fields:
+        username      (string)  = KishanP
+        usernameLower (string)  = kishanp
+        role          (string)  = admin
+        listId        (null)
+        lastListId    (null)
+        createdAt     (timestamp, now)
+        createdBy     (null)
+        lastLoginAt   (null)
+   4. Firestore Database > "usernames" collection > document ID "kishanp",
+      with a single field: uid (string) = that same UID.
+   Sign in with username "KishanP" / password "kipeeric" (not case
+   sensitive) — change this password immediately after first login using
+   the Users tab's "Reset password" on your own account, since it's
+   currently written down in this file.
+
+   ADMIN PASSWORD RESET (optional, needs Cloud Functions + Blaze plan) —
+   creating a NEW account with a chosen password works entirely client-side
+   (see adminCreateUser below) and costs nothing extra. But changing an
+   EXISTING user's password to an Admin-chosen value is something the
+   Firebase client SDK cannot do for anyone other than the currently signed
+   in user — that's an Admin SDK operation, which means a small Cloud
+   Function on the (still effectively free at this scale) Blaze plan. A
+   companion file, functions/index.js, has the deployable function and full
+   deploy instructions. Until that's deployed, "Reset password" in the
+   Users tab will show a clear message instead of failing silently — the
+   rest of the app works fully without it.
+============================================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAt9k9ZABHh_d3s2lvcXaB8OC9L7XLrHxU",
+  authDomain: "geo-tag-tool.firebaseapp.com",
+  projectId: "geo-tag-tool",
+  storageBucket: "geo-tag-tool.firebasestorage.app",
+  messagingSenderId: "21345299747",
+  appId: "1:21345299747:web:a855841123f61451f1b096"
+};
+const USERNAME_EMAIL_DOMAIN = 'fieldgeotag.internal'; // fake domain used to key Firebase Auth off usernames instead of real emails
+const AUDIT_LOG_RETENTION_DAYS = 30;
+// The two fixed trade regions. Trade accounts belong to exactly one and
+// are walled off from the other's data — both in the UI and for real in
+// the Firestore security rules (a trade account's myListId() only ever
+// equals their own region's list ID). Admin/Staff can view either, or
+// both merged as "All". This app supports exactly these two regions; it
+// is not an open-ended "add new list" tool.
+const REGIONS = [
+  { id: 'R07', label: 'Region 07', desc: "Hawke's Bay, Gisborne, Manawatu" },
+  { id: 'R10', label: 'Region 10', desc: 'Christchurch, TOTS' }
+];
+function regionLabel(id){
+  const r = REGIONS.find(r => r.id === id);
+  return r ? `${r.label} (${r.desc})` : (id || '—');
+}
+async function ensureRegionListsExist(){
+  for(const r of REGIONS){
+    try{ await createNewList(r.id); }catch(e){ /* already exists — fine */ }
+  }
+}
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let currentUser = null;
+let userProfile = null; // { username, usernameLower, role, listId, lastListId }
+
+function usernameToEmail(usernameLower){ return `${usernameLower}@${USERNAME_EMAIL_DOMAIN}`; }
+function getSecondaryApp(){
+  // A second, isolated Firebase App instance so that creating another
+  // user's Auth account (which normally signs the CALLING browser in as
+  // that new user) never hijacks the admin's own active session.
+  let sec = firebase.apps.find(a => a.name === 'Secondary');
+  if(!sec) sec = firebase.initializeApp(FIREBASE_CONFIG, 'Secondary');
+  return sec;
+}
+
+/* ============================= STATE ============================= */
+const State = {
+  properties: [],        // [{code, address}]
+  geoCache: {},           // code -> {lat, lon, source}  (in-memory session cache, backed by Firestore)
+  activityLog: [],        // [{ts, wo, propertyId, address, lat, lon, count, files, userEmail}]
+  auditLog: [],            // [{type:'login'|'geotag', ts, username, role, wo, propertyId, address, lat, lon, filename, fileType, listId}]
+  images: [],              // [{id, file, name, size, type, url, selected}]
+  currentProperty: null,   // {code, address}
+  uploadParsed: null,      // pending parsed rows awaiting confirm
+  autoSaveDirName: null     // display name of chosen auto-save folder, if any
+};
+let imgIdSeq = 1;
+let autoSaveDirHandle = null;
+const sessionPasswords = new Map(); // uid -> plaintext password, only ever held in memory for this tab, only right after create/reset
+
+/* ============================= LOCAL FOLDER-HANDLE STORAGE =============================
+   The auto-save folder is a native browser permission tied to one device —
+   it can't live in Firestore. It's the only thing still stored locally
+   (IndexedDB), scoped per signed-in user so two people sharing a machine
+   each get their own remembered folder.
+*/
+let _idbPromise = null;
+function openDB(){
+  if(_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject)=>{
+    if(!('indexedDB' in window)){ reject(new Error('IndexedDB unavailable')); return; }
+    const req = indexedDB.open('geotag-kit-db', 1);
+    req.onupgradeneeded = ()=>{
+      const idb = req.result;
+      if(!idb.objectStoreNames.contains('handles')) idb.createObjectStore('handles');
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+  return _idbPromise;
+}
+function idbGet(store, key){
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  }));
+}
+function idbSet(store, key, value){
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value, key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  }));
+}
+function idbDelete(store, key){
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  }));
+}
+
+/* ============================= AUTH ============================= */
+/* "Remember my login" — an OPT-IN convenience for shared field devices
+   where the same trade worker signs in repeatedly. When checked, the
+   username and password are stored in this browser's localStorage (not
+   Firestore, not synced anywhere) purely to prefill the form next time —
+   both fields stay fully editable, so a different worker on the same
+   device just types over them. Unticking the box and signing in again
+   clears whatever was remembered. This trades a small amount of
+   plaintext-on-device risk for convenience — appropriate for a
+   single-purpose field tool, but worth knowing: anyone with access to
+   this browser profile could read it via dev tools. */
+const REMEMBER_LOGIN_KEY = 'geotag-remembered-login';
+function loadRememberedLogin(){
+  try{
+    const raw = localStorage.getItem(REMEMBER_LOGIN_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function saveRememberedLogin(username, password){
+  try{ localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({ username, password })); }catch(e){}
+}
+function clearRememberedLogin(){
+  try{ localStorage.removeItem(REMEMBER_LOGIN_KEY); }catch(e){}
+}
+
+function bindAuthForm(){
+  const submitBtn = document.getElementById('loginSubmitBtn');
+  const errorBox = document.getElementById('loginError');
+  const form = document.getElementById('loginForm');
+  const rememberCheck = document.getElementById('rememberLoginCheck');
+
+  const remembered = loadRememberedLogin();
+  if(remembered){
+    document.getElementById('loginUsername').value = remembered.username || '';
+    document.getElementById('loginPassword').value = remembered.password || '';
+    rememberCheck.checked = true;
+  }
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    errorBox.style.color = 'var(--red)';
+    errorBox.textContent = '';
+    submitBtn.disabled = true;
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    try{
+      await auth.signInWithEmailAndPassword(usernameToEmail(username.toLowerCase()), password);
+      if(rememberCheck.checked) saveRememberedLogin(username, password);
+      else clearRememberedLogin();
+    }catch(err){
+      errorBox.textContent = friendlyAuthError(err);
+    }
+    submitBtn.disabled = false;
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', ()=> auth.signOut());
+}
+
+function friendlyAuthError(err){
+  const map = {
+    'auth/invalid-email': 'That username looks invalid.',
+    'auth/user-not-found': 'No account with that username.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/invalid-credential': 'Incorrect username or password.',
+    'auth/email-already-in-use': 'That username is already taken.',
+    'auth/weak-password': 'Password must be at least 6 characters.',
+    'auth/too-many-requests': 'Too many attempts — please wait a moment and try again.',
+    'auth/unauthorized-domain': 'This site isn\'t yet authorized in Firebase — add it under Authentication > Settings > Authorized domains.',
+    'auth/requires-recent-login': 'That action needs a fresh sign-in — sign out and back in, then try again.'
+  };
+  return map[err.code] || (err.message || 'Something went wrong — please try again.');
+}
+
+/* ============================= ACCESS MODEL =============================
+   Three kinds of signed-in users, distinguished by the explicit `role`
+   field on their users/{uid} Firestore doc — never inferred from a
+   username or email pattern:
+   - "admin" — full access, including account management for anyone.
+   - "staff" — sees every property list (individually or merged as "All"),
+     the shared Activity Log and Audit Log; can create/remove Trade
+     accounts and reset Trade passwords only.
+   - "trade" — assigned to exactly one of the two fixed regions (R07 or
+     R10), walled off from the other; read-only property list, since only
+     Admin/Staff can add or change properties; no access-management UI.
+   This is enforced for real in Firestore security rules (see the rules
+   block above), not just hidden in the UI.
+*/
+function myRole(){ return userProfile ? userProfile.role : null; }
+function isAdmin(){ return myRole() === 'admin'; }
+function isStaffRole(){ return myRole() === 'staff'; }
+function isStaffOrAdmin(){ return isAdmin() || isStaffRole(); }
+function roleLabel(role){ return role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Trade'; }
+let activeListId = null;  // the region currently being viewed/edited ('ALL' for multi-region accounts)
+
+// Regions a given account (any role) is assigned to, as an array of region
+// IDs. Admin is always both, by definition — not something that needs to
+// be stored or edited. Everyone else has an explicit `regions` array set
+// at creation (or via the first-login picker for Trade).
+const ALL_REGION_IDS = REGIONS.map(r => r.id);
+function accountRegions(u){
+  if(!u) return [];
+  if(u.role === 'admin') return ALL_REGION_IDS.slice();
+  if(Array.isArray(u.regions) && u.regions.length) return u.regions;
+  if(u.listId) return [u.listId]; // backwards compatibility with older accounts
+  return [];
+}
+function myRegions(){ return accountRegions(userProfile); }
+function regionsLabel(regionsArr){
+  if(!regionsArr || !regionsArr.length) return '—';
+  if(ALL_REGION_IDS.every(id => regionsArr.includes(id))) return 'All Regions';
+  return regionsArr.map(id => regionLabel(id)).join(' + ');
+}
+
+function sanitizeListId(raw){
+  return (raw || '').toString().trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+}
+
+function updateRoleUI(){
+  const usersBtn = document.getElementById('usersTabBtn');
+  const auditBtn = document.getElementById('auditTabBtn');
+  const show = isStaffOrAdmin();
+  usersBtn.style.display = show ? '' : 'none';
+  auditBtn.style.display = show ? '' : 'none';
+  document.getElementById('usersPanelTitle').textContent = isAdmin() ? 'Users' : 'Trade users';
+  document.getElementById('usersPanelSub').textContent = isAdmin()
+    ? 'Add and manage any account — Admin, Staff or Trade. There\'s no self-signup; every account is created here.'
+    : 'Add and manage Trade accounts in your region(s). Admin and Staff accounts, and Trade accounts outside your region(s), aren\'t shown here.';
+  document.getElementById('newUserRoleBox').style.display = isAdmin() ? '' : 'none';
+  if(!isAdmin()){
+    document.getElementById('newUserRole').value = 'trade';
+  }
+
+  // Only Admin/Staff can add, upload, or clear properties — Trade accounts
+  // get a read-only, region-locked view of their own list.
+  document.getElementById('uploadDbBtn').style.display = show ? '' : 'none';
+  document.getElementById('clearDbBtn').style.display = show ? '' : 'none';
+  document.getElementById('addRowBtn').style.display = show ? '' : 'none';
+  document.getElementById('dbPanelSub').textContent = show
+    ? 'Each region has its own property list. Update the active region by uploading an Excel/CSV file, or edit rows directly below.'
+    : 'This is your region\'s property list, kept up to date by Admin and Staff. Trade accounts can search and export it, but only Admin and Staff can add, upload, or remove properties.';
+}
+
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    currentUser = user;
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('userEmailLabel').textContent = '…';
+
+    const userRef = db.collection('users').doc(user.uid);
+    let snap;
+    try{
+      snap = await userRef.get();
+    }catch(e){
+      // Almost always means the doc doesn't exist yet and rules deny the
+      // implicit read used to evaluate isStaffOrAdmin() for someone with
+      // no role doc at all — treat the same as "account removed".
+      snap = null;
+    }
+    if(!snap || !snap.exists){
+      // No matching users/{uid} doc — either a brand-new account that
+      // hasn't been provisioned by an Admin/Staff yet, or one that was
+      // removed. Either way, they can't use the app.
+      toast('This account has no profile — ask an Admin to set it up, or it may have been removed.', 'err');
+      await auth.signOut();
+      return;
+    }
+    userProfile = snap.data();
+
+    // Record this login for the Active/Pending indicator and the audit log.
+    userRef.set({ lastLoginAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(()=>{});
+    addAuditLogEntry({
+      type: 'login', uid: user.uid, username: userProfile.username || '', role: userProfile.role || ''
+    });
+
+    updateRoleUI();
+
+    const regions = myRegions();
+    if(isAdmin()){
+      activeListId = userProfile.lastListId || 'ALL';
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · All Regions`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    } else if(!regions.length){
+      document.getElementById('userEmailLabel').textContent = userProfile.username;
+      document.getElementById('mainWrap').classList.add('hidden');
+      await showListAssignOverlay();
+    } else {
+      activeListId = regions.length > 1 ? (userProfile.lastListId || 'ALL') : regions[0];
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · ${regionsLabel(regions)}`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    }
+  } else {
+    currentUser = null; userProfile = null; activeListId = null;
+    document.getElementById('mainWrap').classList.add('hidden');
+    document.getElementById('listAssignOverlay').classList.add('hidden');
+    document.getElementById('loginOverlay').classList.remove('hidden');
+  }
+});
+
+async function showListAssignOverlay(){
+  const sel = document.getElementById('listAssignSelect');
+  sel.innerHTML = REGIONS.map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(regionLabel(r.id))}</option>`).join('')
+    + `<option value="BOTH">Both regions</option>`;
+  document.getElementById('listAssignError').textContent = '';
+  document.getElementById('listAssignOverlay').classList.remove('hidden');
+}
+
+/* ============================= FIRESTORE DATA ============================= */
+const PROPERTY_CHUNK_SIZE = 3000; // keeps each Firestore doc well under the 1MB limit
+
+async function loadListIndex(){
+  try{
+    const snap = await db.collection('property_lists').get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>a.id.localeCompare(b.id));
+  }catch(e){ console.error('loadListIndex failed', e); return []; }
+}
+
+async function loadPropertiesForList(listId){
+  if(!listId) return [];
+  try{
+    if(listId === 'ALL'){
+      const index = await loadListIndex();
+      const all = await Promise.all(index.map(l => loadPropertiesForList(l.id)));
+      return all.flat();
+    }
+    const metaSnap = await db.collection('property_lists').doc(listId).get();
+    if(!metaSnap.exists) return [];
+    const n = metaSnap.data().chunkCount || 0;
+    const proms = [];
+    for(let i=0;i<n;i++) proms.push(db.collection('property_lists').doc(listId).collection('chunks').doc('chunk_'+i).get());
+    const snaps = await Promise.all(proms);
+    let rows = [];
+    snaps.forEach(s => { if(s.exists) rows = rows.concat(s.data().rows || []); });
+    return rows;
+  }catch(e){ console.error('loadPropertiesForList failed', e); toast('Could not load that property list: ' + e.message, 'err'); return []; }
+}
+
+async function savePropertiesForList(listId, rows){
+  const chunks = [];
+  for(let i=0;i<rows.length;i+=PROPERTY_CHUNK_SIZE) chunks.push(rows.slice(i, i+PROPERTY_CHUNK_SIZE));
+  const metaRef = db.collection('property_lists').doc(listId);
+  const metaSnap = await metaRef.get();
+  const prevCount = metaSnap.exists ? (metaSnap.data().chunkCount || 0) : 0;
+  const batch = db.batch();
+  const maxIdx = Math.max(prevCount, chunks.length);
+  for(let i=0;i<maxIdx;i++){
+    const ref = metaRef.collection('chunks').doc('chunk_'+i);
+    if(i < chunks.length) batch.set(ref, { rows: chunks[i] });
+    else batch.delete(ref);
+  }
+  batch.set(metaRef, {
+    chunkCount: chunks.length,
+    count: rows.length,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: userProfile ? userProfile.username : null
+  }, { merge: true });
+  await batch.commit();
+}
+
+async function createNewList(listId){
+  const ref = db.collection('property_lists').doc(listId);
+  const snap = await ref.get();
+  if(snap.exists) throw new Error(`List "${listId}" already exists`);
+  await ref.set({
+    chunkCount: 0, count: 0,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: userProfile ? userProfile.username : null
+  });
+}
+
+async function fetchGeocodeFromCloud(code){
+  try{
+    const snap = await db.collection('geocode_cache').doc(code).get();
+    return snap.exists ? snap.data() : null;
+  }catch(e){ console.error('geocode cache read failed', e); return null; }
+}
+async function saveGeocodeToCloud(code, data){
+  try{
+    await db.collection('geocode_cache').doc(code).set({
+      ...data,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: userProfile ? userProfile.username : null
+    });
+  }catch(e){ console.error('geocode cache write failed', e); }
+}
+
+async function loadActivityLog(){
+  if(!isStaffOrAdmin()) return []; // trade users can add entries but can't browse the shared log
+  try{
+    const snap = await db.collection('activity_log').orderBy('ts', 'desc').limit(300).get();
+    return snap.docs.map(d => d.data());
+  }catch(e){ console.error('loadActivityLog failed', e); toast('Could not load the activity log: ' + e.message, 'err'); return []; }
+}
+async function addActivityLogEntry(entry){
+  try{ await db.collection('activity_log').add(entry); }
+  catch(e){ console.error('activity log write failed', e); toast('Saved locally, but could not sync to the shared log: ' + e.message, 'err'); }
+}
+async function clearActivityLogCloud(){
+  const snap = await db.collection('activity_log').get();
+  const batches = [];
+  let batch = db.batch(), n = 0;
+  snap.docs.forEach(d=>{
+    batch.delete(d.ref);
+    n++;
+    if(n === 450){ batches.push(batch.commit()); batch = db.batch(); n = 0; }
+  });
+  if(n > 0) batches.push(batch.commit());
+  await Promise.all(batches);
+}
+
+async function loadAllData(){
+  toast('Loading shared data…');
+  if(isStaffOrAdmin()) await ensureRegionListsExist();
+  const [properties, log] = await Promise.all([ loadPropertiesForList(activeListId), loadActivityLog() ]);
+  State.properties = properties;
+  State.activityLog = log;
+  State.geoCache = {};
+  renderDbCount();
+  renderDbTable();
+  renderLog();
+  renderListSelector();
+  await loadAutoSaveDir();
+  renderAutoSaveUI();
+  if(isStaffOrAdmin()){
+    await renderUsersTab();
+    State.auditLog = await loadAuditLog();
+    renderAuditLog();
+  }
+}
+
+/* ============================= USER MANAGEMENT (Admin / Staff) =============================
+   Creating a new account works entirely client-side: a second, isolated
+   Firebase App instance signs up the new user (so it never hijacks the
+   admin's own session), then the admin's primary session writes the
+   users/{uid} and usernames/{name} Firestore docs. The chosen plaintext
+   password is only ever kept in the sessionPasswords Map above — never
+   written to Firestore — so "Email login details" only works right after
+   a create or reset, in that same browser tab.
+
+   Resetting an EXISTING account's password to an admin-chosen value is not
+   something the Firebase client SDK can do for anyone other than yourself
+   — see the "ADMIN PASSWORD RESET" note near the top of this file. That
+   path calls an optional Cloud Function; until it's deployed, the button
+   explains why instead of failing silently.
+*/
+function generateRandomPassword(len){
+  len = len || 10;
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, n => chars[n % chars.length]).join('');
+}
+
+async function adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email }){
+  const uname = (username || '').trim();
+  const usernameLower = uname.toLowerCase();
+  if(!/^[a-z0-9._-]{3,32}$/.test(usernameLower)){
+    throw new Error('Username must be 3–32 characters: letters, numbers, dot, underscore or hyphen only.');
+  }
+  if(!password){
+    throw new Error('Enter a password.');
+  }
+  if(!['admin','staff','trade'].includes(role)){
+    throw new Error('Invalid role.');
+  }
+  if(!isAdmin() && role !== 'trade'){
+    throw new Error('Staff can only create Trade accounts.');
+  }
+
+  // Resolve the chosen region(s). Admin is always both, implicitly.
+  let regions = role === 'admin' ? ALL_REGION_IDS.slice() : (regionsPick === 'BOTH' ? ALL_REGION_IDS.slice() : (regionsPick ? [regionsPick] : []));
+  if(!isAdmin() && role !== 'admin'){
+    // Staff can only assign accounts within their own region(s).
+    const own = myRegions();
+    const outside = regions.filter(r => !own.includes(r));
+    if(outside.length){
+      throw new Error(`You can only create accounts within your own region(s) (${regionsLabel(own)}).`);
+    }
+  }
+
+  let companyNameTrim = '';
+  if(role === 'trade'){
+    companyNameTrim = (companyName || '').trim();
+    if(!companyNameTrim){
+      throw new Error('Company name is required for Trade accounts.');
+    }
+  }
+
+  const nameRef = db.collection('usernames').doc(usernameLower);
+  const nameSnap = await nameRef.get();
+  if(nameSnap.exists){
+    throw new Error(`Username "${uname}" is already taken.`);
+  }
+
+  const secAuth = getSecondaryApp().auth();
+  let cred;
+  try{
+    cred = await secAuth.createUserWithEmailAndPassword(usernameToEmail(usernameLower), password);
+  } finally {
+    try{ await secAuth.signOut(); }catch(e){}
+  }
+  const uid = cred.user.uid;
+
+  const initialActive = regions.length > 1 ? 'ALL' : (regions[0] || null);
+  await db.collection('users').doc(uid).set({
+    username: uname, usernameLower, role,
+    regions,
+    lastListId: initialActive,
+    companyName: role === 'trade' ? companyNameTrim : null,
+    mobile: role === 'trade' ? (mobile || '').trim() : null,
+    email: role === 'trade' ? (email || '').trim() : null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: currentUser ? currentUser.uid : null,
+    createdByUsername: userProfile ? userProfile.username : null,
+    lastLoginAt: null
+  });
+  await nameRef.set({ uid, role });
+
+  sessionPasswords.set(uid, password);
+  return { uid, username: uname };
+}
+
+async function resetUserPassword(uid, username){
+  const newPassword = generateRandomPassword();
+  try{
+    const callable = firebase.app().functions().httpsCallable('adminResetPassword');
+    await callable({ uid, newPassword });
+  }catch(e){
+    console.error('adminResetPassword failed', e);
+    toast('Password reset needs the optional Cloud Function deployed first — see the "ADMIN PASSWORD RESET" note near the top of this file (functions/index.js).', 'err');
+    return;
+  }
+  sessionPasswords.set(uid, newPassword);
+  openEmailTemplate(username, newPassword);
+  toast(`Password reset for "${username}"`, 'ok');
+  await renderUsersTab();
+}
+
+async function removeUser(uid, usernameLower, username, role){
+  if(!confirm(`Remove account "${username}" (${roleLabel(role)})? They will no longer be able to sign in or access any data. Their past activity log and audit log entries are kept for the record — only the account itself is removed.`)) return;
+  try{
+    await db.collection('users').doc(uid).delete();
+    if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
+    sessionPasswords.delete(uid);
+
+    // Record the deletion itself in the audit log — kept forever like every
+    // other audit entry (subject to the normal 30-day TTL), even though the
+    // account and its username mapping are now gone.
+    addAuditLogEntry({
+      type: 'account_removed',
+      uid: currentUser ? currentUser.uid : null,
+      username: userProfile ? userProfile.username : 'unknown',
+      role: userProfile ? userProfile.role : null,
+      targetUid: uid,
+      targetUsername: username,
+      targetRole: role
+    });
+
+    try{
+      await firebase.app().functions().httpsCallable('adminDeleteAuthUser')({ uid });
+    }catch(e){
+      // Optional — without the Cloud Function the Auth record survives as
+      // a harmless orphan (no Firestore role doc = no app access under the
+      // security rules) until it's deployed or cleaned up in the console.
+    }
+    toast(`Removed "${username}"`, 'ok');
+    await renderUsersTab();
+    State.auditLog = await loadAuditLog();
+    renderAuditLog();
+  }catch(e){
+    toast('Could not remove that account: ' + e.message, 'err');
+  }
+}
+
+function openEmailTemplate(username, password){
+  const box = document.getElementById('emailTemplateBox');
+  const body = document.getElementById('emailTemplateBody');
+  body.value = `Hi ${username},\n\nHere are your Field GeoTag Kit login details:\n\nUsername: ${username}\nPassword: ${password}\n\nSign in at: [add your GitHub Pages link here]\n\nPlease keep this somewhere safe.`;
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('openMailBtn').onclick = (e)=>{
+    e.preventDefault();
+    const subject = encodeURIComponent('Your Field GeoTag Kit login');
+    window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(body.value)}`;
+  };
+}
+
+async function loadUsersList(){
+  try{
+    let snap;
+    if(isAdmin()) snap = await db.collection('users').orderBy('username').get();
+    else snap = await db.collection('users').where('role', '==', 'trade').get();
+    let users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    if(!isAdmin()){
+      // Staff only sees Trade accounts whose region(s) overlap their own.
+      const own = myRegions();
+      users = users.filter(u => accountRegions(u).some(r => own.includes(r)));
+    }
+    return users;
+  }catch(e){
+    console.error('loadUsersList failed', e);
+    toast('Could not load users: ' + e.message, 'err');
+    return [];
+  }
+}
+
+function populateRegionPicker(selectEl, allowedRegionIds){
+  const opts = REGIONS.filter(r => allowedRegionIds.includes(r.id))
+    .map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(r.label)}</option>`).join('');
+  const bothOpt = allowedRegionIds.length > 1 ? `<option value="BOTH">Both regions</option>` : '';
+  selectEl.innerHTML = opts + bothOpt;
+}
+
+async function renderUsersTab(){
+  // Admin can assign any region; Staff can only assign within their own.
+  const allowedRegionIds = isAdmin() ? ALL_REGION_IDS : myRegions();
+  populateRegionPicker(document.getElementById('newUserList'), allowedRegionIds);
+
+  const users = await loadUsersList();
+  document.getElementById('usersCount').textContent = users.length;
+  document.getElementById('usersCount2').textContent = users.length;
+
+  const body = document.getElementById('usersTableBody');
+  if(!users.length){
+    body.innerHTML = '<tr><td colspan="5"><div class="empty-state">No accounts yet — add one above.</div></td></tr>';
+    return;
+  }
+  body.innerHTML = users.map(u => {
+    const canManage = isAdmin() || u.role === 'trade';
+    const isSelf = currentUser && u.uid === currentUser.uid;
+    const active = !!u.lastLoginAt;
+    const hasPw = sessionPasswords.has(u.uid);
+    const contactBits = [];
+    if(u.role === 'trade'){
+      if(u.companyName) contactBits.push(escapeHtml(u.companyName));
+      if(u.mobile) contactBits.push(escapeHtml(u.mobile));
+      if(u.email) contactBits.push(escapeHtml(u.email));
+    }
+    return `
+    <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
+      <td>${escapeHtml(u.username || '—')}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}</td>
+      <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
+      <td>${escapeHtml(regionsLabel(accountRegions(u)))}</td>
+      <td><span class="status-pill ${active?'active':'pending'}"><span class="dot"></span>${active?'Active':'Pending'}</span></td>
+      <td>
+        <div class="user-actions">
+          ${canManage ? `<button class="btn small ghost" data-act="reset">Reset password</button>` : ''}
+          ${hasPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
+          ${canManage && !isSelf ? `<button class="btn small ghost danger" data-act="remove">Remove</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      resetUserPassword(tr.dataset.uid, tr.dataset.username);
+    });
+  });
+  body.querySelectorAll('[data-act="email"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      openEmailTemplate(tr.dataset.username, sessionPasswords.get(tr.dataset.uid));
+    });
+  });
+  body.querySelectorAll('[data-act="remove"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      removeUser(tr.dataset.uid, tr.dataset.namelower, tr.dataset.username, tr.dataset.role);
+    });
+  });
+}
+
+function updateAddUserFormVisibility(){
+  const role = isAdmin() ? document.getElementById('newUserRole').value : 'trade';
+  document.getElementById('newUserListBox').style.display = role === 'admin' ? 'none' : '';
+  document.getElementById('newUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
+  document.getElementById('newUserEmail').closest('.row').style.display = role === 'trade' ? '' : 'none';
+}
+
+function bindUsersTab(){
+  document.getElementById('addUserBtn').addEventListener('click', ()=>{
+    document.getElementById('addUserBox').style.display = 'block';
+    document.getElementById('emailTemplateBox').style.display = 'none';
+    document.getElementById('addUserError').textContent = '';
+    document.getElementById('newUserUsername').value = '';
+    document.getElementById('newUserPassword').value = '';
+    document.getElementById('newUserCompany').value = '';
+    document.getElementById('newUserMobile').value = '';
+    document.getElementById('newUserEmail').value = '';
+    updateAddUserFormVisibility();
+  });
+  document.getElementById('cancelAddUserBtn').addEventListener('click', ()=>{
+    document.getElementById('addUserBox').style.display = 'none';
+  });
+  document.getElementById('genPasswordBtn').addEventListener('click', ()=>{
+    document.getElementById('newUserPassword').value = generateRandomPassword();
+  });
+  document.getElementById('newUserRole').addEventListener('change', updateAddUserFormVisibility);
+  document.getElementById('createUserBtn').addEventListener('click', async ()=>{
+    const errBox = document.getElementById('addUserError');
+    errBox.textContent = '';
+    const username = document.getElementById('newUserUsername').value;
+    const password = document.getElementById('newUserPassword').value;
+    const role = isAdmin() ? document.getElementById('newUserRole').value : 'trade';
+    const regionsPick = document.getElementById('newUserList').value;
+    const companyName = document.getElementById('newUserCompany').value;
+    const mobile = document.getElementById('newUserMobile').value;
+    const email = document.getElementById('newUserEmail').value;
+    const btn = document.getElementById('createUserBtn');
+    btn.disabled = true;
+    try{
+      const { username: uname } = await adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email });
+      document.getElementById('addUserBox').style.display = 'none';
+      openEmailTemplate(uname, password);
+      toast(`Account "${uname}" created`, 'ok');
+      await renderUsersTab();
+    }catch(err){
+      errBox.textContent = err.code ? friendlyAuthError(err) : (err.message || 'Could not create that account.');
+    }
+    btn.disabled = false;
+  });
+  document.getElementById('closeEmailTemplateBtn').addEventListener('click', ()=>{
+    document.getElementById('emailTemplateBox').style.display = 'none';
+  });
+}
+
+/* ============================= AUDIT LOG (Admin / Staff) =============================
+   Separate from the batch-level Activity Log above: every login, and every
+   photo geotagged (one entry per image — work order, property, lat/lon,
+   filename and file type). Firestore's TTL policy on audit_log.expiresAt
+   (set up in step 7 of the Firebase setup notes) auto-deletes entries
+   after AUDIT_LOG_RETENTION_DAYS, so there's no client-side cleanup code.
+*/
+function auditExpiryDate(){
+  const d = new Date();
+  d.setDate(d.getDate() + AUDIT_LOG_RETENTION_DAYS);
+  return d;
+}
+async function addAuditLogEntry(entry){
+  try{
+    await db.collection('audit_log').add({
+      ...entry,
+      ts: firebase.firestore.FieldValue.serverTimestamp(),
+      tsClient: new Date().toISOString(),
+      expiresAt: auditExpiryDate()
+    });
+  }catch(e){ console.error('audit log write failed', e); }
+}
+async function loadAuditLog(){
+  if(!isStaffOrAdmin()) return [];
+  try{
+    const snap = await db.collection('audit_log').orderBy('ts', 'desc').limit(1000).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }catch(e){
+    console.error('loadAuditLog failed', e);
+    toast('Could not load the audit log: ' + e.message, 'err');
+    return [];
+  }
+}
+function auditEntryDate(e){ return e.ts && e.ts.toDate ? e.ts.toDate() : new Date(e.tsClient || Date.now()); }
+function dateRangeSlug(){
+  if(!State.auditLog.length) return new Date().toISOString().slice(0,10);
+  const dates = State.auditLog.map(auditEntryDate);
+  const fmt = d => d.toISOString().slice(0,10);
+  return `${fmt(new Date(Math.min(...dates)))}_to_${fmt(new Date(Math.max(...dates)))}`;
+}
+function fmtAuditEntry(e){
+  const ts = auditEntryDate(e).toLocaleString();
+  if(e.type === 'login'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind login">Login</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} · ${roleLabel(e.role)}</div>
+    </div>`;
+  }
+  if(e.type === 'account_removed'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind removed">Account removed</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) removed "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})</div>
+    </div>`;
+  }
+  return `<div class="audit-item">
+    <div class="top-row"><span class="kind geotag">Geotag</span><span class="ts">${ts}</span></div>
+    <div class="detail">${escapeHtml(e.username||'unknown')} · ${escapeHtml(e.wo||'')} — ${escapeHtml(e.propertyId||'')} · ${e.lat!=null?e.lat.toFixed(6):''}, ${e.lon!=null?e.lon.toFixed(6):''} · ${escapeHtml(e.filename||'')} (${escapeHtml((e.fileType||'').toUpperCase())}) · ${escapeHtml(e.listId||'—')}</div>
+  </div>`;
+}
+function renderAuditLog(){
+  document.getElementById('auditCount2').textContent = State.auditLog.length;
+  const list = document.getElementById('auditList');
+  const rangeEl = document.getElementById('auditRange');
+  if(!State.auditLog.length){
+    list.innerHTML = '<div class="empty-state">No audit entries yet — logins, geotagging actions, and account removals will appear here, kept for 30 days.</div>';
+    rangeEl.textContent = '';
+    return;
+  }
+  const dates = State.auditLog.map(auditEntryDate);
+  rangeEl.textContent = `${new Date(Math.min(...dates)).toLocaleDateString()} – ${new Date(Math.max(...dates)).toLocaleDateString()}`;
+  list.innerHTML = State.auditLog.map(fmtAuditEntry).join('');
+}
+function auditRowsForExport(){
+  return State.auditLog.map(e => ({
+    'Type': e.type, 'Timestamp': auditEntryDate(e).toISOString(),
+    'Username': e.username||'', 'Role': e.role||'', 'Work Order': e.wo||'', 'Property ID': e.propertyId||'',
+    'Address': e.address||'', 'Latitude': e.lat!=null?e.lat:'', 'Longitude': e.lon!=null?e.lon:'',
+    'Filename': e.filename||'', 'File Type': e.fileType||'', 'List': e.listId||'',
+    'Removed Username': e.targetUsername||'', 'Removed Role': e.targetRole||''
+  }));
+}
+function bindAuditTab(){
+  document.getElementById('refreshAuditBtn').addEventListener('click', async ()=>{
+    State.auditLog = await loadAuditLog();
+    renderAuditLog();
+    toast('Audit log refreshed', 'ok');
+  });
+  document.getElementById('exportAuditCsvBtn').addEventListener('click', ()=>{
+    const csv = Papa.unparse(auditRowsForExport());
+    downloadText(csv, `audit-log_${dateRangeSlug()}.csv`, 'text/csv');
+  });
+  document.getElementById('exportAuditZipBtn').addEventListener('click', async ()=>{
+    const csv = Papa.unparse(auditRowsForExport());
+    const slug = dateRangeSlug();
+    const zip = new JSZip();
+    zip.file(`audit-log_${slug}.csv`, csv);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    await saveBlob(blob, `audit-log_${slug}.zip`);
+  });
+}
+
+/* ============================= INIT ============================= */
+function init(){
+  bindAuthForm();
+  bindEvents();
+  document.getElementById('listAssignConfirmBtn').addEventListener('click', async ()=>{
+    const sel = document.getElementById('listAssignSelect');
+    const val = sel.value;
+    const errBox = document.getElementById('listAssignError');
+    if(!val){ errBox.textContent = 'No region available to select yet.'; return; }
+    const regions = val === 'BOTH' ? ALL_REGION_IDS.slice() : [val];
+    try{
+      await db.collection('users').doc(currentUser.uid).set({ regions, lastListId: val === 'BOTH' ? 'ALL' : val }, { merge: true });
+      userProfile.regions = regions;
+      userProfile.lastListId = val === 'BOTH' ? 'ALL' : val;
+      activeListId = val === 'BOTH' ? 'ALL' : val;
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · ${regionsLabel(regions)}`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    }catch(err){
+      errBox.textContent = err.message || 'Could not save your selection — try again.';
+    }
+  });
+}
+
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>{ t.className = 'toast'; }, 3200);
+}
+
+/* ============================= TABS ============================= */
+function bindTabs(){
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('show'));
+      btn.classList.add('active');
+      document.getElementById('tab-'+btn.dataset.tab).classList.add('show');
+    });
+  });
+}
+
+/* ============================= PROPERTY SEARCH ============================= */
+let acHiIndex = -1, acResults = [];
+function bindPropertySearch(){
+  const input = document.getElementById('propSearch');
+  const list = document.getElementById('acList');
+  input.addEventListener('input', ()=>{
+    const q = input.value.trim().toLowerCase();
+    // If the text no longer matches the currently-resolved property, the
+    // old selection (and its coordinates) is stale — clear it so the
+    // Process button can't fire against the wrong address, and so a fresh
+    // pick is required before repeating the workflow for a new property.
+    if(State.currentProperty && input.value.trim() !== State.currentProperty.code){
+      clearResolvedProperty();
+    }
+    if(!q){ list.classList.remove('show'); return; }
+    acResults = State.properties.filter(p =>
+      (p.code||'').toLowerCase().includes(q) || (p.address||'').toLowerCase().includes(q)
+    ).slice(0, 25);
+    acHiIndex = -1;
+    renderAcList();
+  });
+  input.addEventListener('keydown', (e)=>{
+    if(!list.classList.contains('show')) return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); acHiIndex = Math.min(acHiIndex+1, acResults.length-1); renderAcList(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); acHiIndex = Math.max(acHiIndex-1, 0); renderAcList(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); if(acResults[acHiIndex]) selectProperty(acResults[acHiIndex]); }
+    else if(e.key === 'Escape'){ list.classList.remove('show'); }
+  });
+  document.addEventListener('click', (e)=>{
+    if(!e.target.closest('.autocomplete')) list.classList.remove('show');
+  });
+}
+function renderAcList(){
+  const list = document.getElementById('acList');
+  if(!acResults.length){
+    list.innerHTML = State.properties.length
+      ? '<div class="ac-empty">No matches. Check the Property DB tab.</div>'
+      : '<div class="ac-empty">No property list loaded yet — go to the Property DB tab to upload one.</div>';
+    list.classList.add('show');
+    return;
+  }
+  list.innerHTML = acResults.map((p,i)=>`
+    <div class="ac-item ${i===acHiIndex?'hi':''}" data-i="${i}">
+      <div class="code">${escapeHtml(p.code)}</div>
+      <div class="addr">${escapeHtml(p.address)}</div>
+    </div>`).join('');
+  list.classList.add('show');
+  list.querySelectorAll('.ac-item').forEach(el=>{
+    el.addEventListener('click', ()=> selectProperty(acResults[+el.dataset.i]));
+  });
+}
+
+function clearResolvedProperty(){
+  State.currentProperty = null;
+  document.getElementById('propResolved').style.display = 'none';
+  document.getElementById('latField').value = '';
+  document.getElementById('lonField').value = '';
+  document.getElementById('geoStatus').textContent = '';
+  document.getElementById('resultBox').classList.remove('show');
+  updateProcessBtn();
+}
+
+async function selectProperty(p){
+  State.currentProperty = p;
+  document.getElementById('propSearch').value = p.code;
+  document.getElementById('acList').classList.remove('show');
+  document.getElementById('propResolved').style.display = 'block';
+  document.getElementById('latField').value = '';
+  document.getElementById('lonField').value = '';
+  document.getElementById('addressQueryField').value = p.address;
+  document.getElementById('resultBox').classList.remove('show');
+  updateStamp('Looking up coordinates…');
+  document.getElementById('geoStatus').textContent = '';
+
+  const cached = State.geoCache[p.code] || await fetchGeocodeFromCloud(p.code);
+  if(cached && cached.lat != null){
+    State.geoCache[p.code] = cached;
+    fillCoords(cached.lat, cached.lon);
+    document.getElementById('geoStatus').textContent = 'From shared cache';
+  } else {
+    await geocodeCurrent();
+  }
+  updateProcessBtn();
+}
+
+function fillCoords(lat, lon){
+  document.getElementById('latField').value = lat;
+  document.getElementById('lonField').value = lon;
+  updateStamp();
+}
+
+function updateStamp(statusOverride){
+  const p = State.currentProperty;
+  if(!p) return;
+  const lat = document.getElementById('latField').value;
+  const lon = document.getElementById('lonField').value;
+  const box = document.getElementById('stampBox');
+  box.innerHTML = `
+    <span class="label">Property</span> <b>${escapeHtml(p.code)}</b><br>
+    <span class="label">Address</span> ${escapeHtml(p.address)}<br>
+    <span class="label">Coords</span> ${statusOverride ? statusOverride : (lat && lon ? `<b>${lat}, ${lon}</b>` : 'not set')}
+  `;
+}
+
+/* ============================= ADDRESS NORMALIZATION ============================= */
+// NZ addresses in the source data sometimes have formats OpenStreetMap's
+// geocoder chokes on but that a human (or Google Maps) reads fine — e.g.
+// "1-2/209 MAIN NORTH RD" (a hyphenated unit range before a slash), a
+// leading "FLAT 1 - 3," prefix, or an accidentally duplicated suburb/
+// postcode tail. This builds a list of reasonable reformattings to try
+// in order, so a failed lookup can often resolve itself automatically.
+function dedupeSegments(addr){
+  const parts = addr.split(',').map(s=>s.trim()).filter(Boolean);
+  const out = [];
+  for(const p of parts){
+    if(out.length && out[out.length-1].toLowerCase() === p.toLowerCase()) continue;
+    out.push(p);
+  }
+  if(out.length >= 4 && out.length % 2 === 0){
+    const half = out.length/2;
+    const firstHalf = out.slice(0, half).join('|').toLowerCase();
+    const secondHalf = out.slice(half).join('|').toLowerCase();
+    if(firstHalf === secondHalf) return out.slice(0, half).join(', ');
+  }
+  return out.join(', ');
+}
+
+function buildAddressVariants(raw){
+  const variants = [];
+  const add = (s)=>{ s = (s||'').trim().replace(/\s{2,}/g,' '); if(s && !variants.includes(s)) variants.push(s); };
+
+  const deduped = dedupeSegments(raw);
+  add(deduped);
+
+  // "1-2/209 MAIN NORTH RD ..." -> try "209 MAIN NORTH RD ..." and "1/209 MAIN NORTH RD ..."
+  let m = deduped.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
+  if(m){
+    add(m[3]);
+    add(`${m[1]}/${m[3]}`);
+  } else {
+    // "2/209 MAIN NORTH RD ..." -> also try without the unit
+    m = deduped.match(/^(\d+)\s*\/\s*(.+)$/);
+    if(m) add(m[2]);
+  }
+
+  // "FLAT 1 - 3, 15 FRANKLYN ST ..." / "UNIT 4, ..." -> drop the leading unit clause
+  m = deduped.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+(?:\s*-\s*[0-9A-Za-z]+)?\s*,\s*(.+)$/i);
+  if(m) add(m[1]);
+
+  // last-resort: explicit country hint on the best variant so far
+  if(variants[0] && !/new zealand/i.test(variants[0])) add(variants[0] + ', New Zealand');
+
+  return variants;
+}
+
+async function nominatimLookup(query){
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nz&q=' + encodeURIComponent(query);
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data = await res.json();
+  return (data && data.length) ? data[0] : null;
+}
+
+async function geocodeCurrent(){
+  const p = State.currentProperty;
+  if(!p) return;
+  const queryField = document.getElementById('addressQueryField');
+  const rawAddress = (queryField.value || p.address || '').trim();
+  if(!rawAddress) return;
+
+  document.getElementById('geoStatus').textContent = 'Looking up…';
+  const variants = buildAddressVariants(rawAddress);
+  let found = null, usedVariant = null;
+
+  for(let i=0; i<variants.length; i++){
+    try{
+      const result = await nominatimLookup(variants[i]);
+      if(result){ found = result; usedVariant = variants[i]; break; }
+    }catch(e){ /* try the next variant */ }
+    if(i < variants.length-1) await new Promise(r=>setTimeout(r, 250));
+  }
+
+  if(found){
+    const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
+    State.geoCache[p.code] = { lat, lon, source:'nominatim', query: usedVariant };
+    await saveGeocodeToCloud(p.code, State.geoCache[p.code]);
+    fillCoords(lat.toFixed(6), lon.toFixed(6));
+    document.getElementById('geoStatus').textContent = (usedVariant === rawAddress.trim())
+      ? 'Located via OpenStreetMap'
+      : `Located via OpenStreetMap — auto-adjusted to "${usedVariant}"`;
+    if(usedVariant !== rawAddress) queryField.value = usedVariant;
+  } else {
+    updateStamp('lookup failed — enter manually below');
+    document.getElementById('geoStatus').textContent =
+      `Tried ${variants.length} address format${variants.length>1?'s':''}, still no match. Edit the address above and try again, or enter coordinates manually.`;
+  }
+  updateProcessBtn();
+}
+
+/* ============================= IMAGE INTAKE =============================
+   Privacy: photos never leave the browser except to the folder or ZIP the
+   user explicitly chooses to save to. They are never uploaded to Firebase,
+   Firestore, or any other server — only their filename, file type, and the
+   coordinates written into them are recorded (in the audit log, as text).
+   Thumbnails live only in this tab's memory via short-lived object URLs,
+   which are revoked (and the images dropped) as soon as a batch is
+   successfully processed — see the end of processAndExport() below. */
+function bindImageIntake(){
+  const dz = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const folderInput = document.getElementById('folderInput');
+
+  document.getElementById('pickFilesBtn').addEventListener('click', (e)=>{ e.stopPropagation(); fileInput.click(); });
+  document.getElementById('pickFolderBtn').addEventListener('click', (e)=>{ e.stopPropagation(); folderInput.click(); });
+  dz.addEventListener('click', ()=> fileInput.click());
+
+  fileInput.addEventListener('change', ()=>{ addFiles([...fileInput.files]); fileInput.value=''; });
+  folderInput.addEventListener('change', ()=>{ addFiles([...folderInput.files]); folderInput.value=''; });
+
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag'); }));
+
+  dz.addEventListener('drop', async (e)=>{
+    const dt = e.dataTransfer;
+    // Plain files are the standard, most reliable signal for a normal file
+    // drag (single or multiple images) — try this first.
+    const plainFiles = dt.files ? [...dt.files] : [];
+    const plainImages = plainFiles.filter(isImageFile);
+    if(plainImages.length){
+      addFiles(plainFiles);
+      return;
+    }
+
+    // No usable plain files — likely a folder drop, or a browser that
+    // doesn't populate dt.files reliably for this kind of drag. Fall back
+    // to walking the directory entries.
+    let files = [];
+    try{
+      const items = dt.items;
+      if(items && items.length){
+        const entries = [...items].map(it => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)).filter(Boolean);
+        for(const entry of entries){ await walkEntry(entry, files); }
+      }
+    }catch(err){ /* fall through below */ }
+    if(!files.length) files = plainFiles; // last resort: whatever we had
+    addFiles(files);
+  });
+
+  document.getElementById('selectAllChk').addEventListener('change', (e)=>{
+    State.images.forEach(im => im.selected = e.target.checked);
+    renderThumbs();
+  });
+  document.getElementById('clearImagesBtn').addEventListener('click', ()=>{
+    State.images.forEach(im => URL.revokeObjectURL(im.url));
+    State.images = [];
+    renderThumbs();
+  });
+}
+
+function walkEntry(entry, files){
+  return new Promise((resolve)=>{
+    if(entry.isFile){
+      entry.file(f => { files.push(f); resolve(); }, ()=>resolve());
+    } else if(entry.isDirectory){
+      const reader = entry.createReader();
+      const readBatch = ()=>{
+        reader.readEntries(async (entries)=>{
+          if(!entries.length) return resolve();
+          for(const en of entries){ await walkEntry(en, files); }
+          readBatch();
+        }, ()=>resolve());
+      };
+      readBatch();
+    } else resolve();
+  });
+}
+
+// Some drag sources (notably certain Windows/OneDrive setups) don't report
+// a MIME type on dropped files, so relying on file.type alone silently
+// drops valid photos. Fall back to the filename extension.
+function isImageFile(f){
+  if(f.type && f.type.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|heif)$/i.test(f.name || '');
+}
+
+function addFiles(fileList){
+  const imgs = fileList.filter(isImageFile);
+  if(!imgs.length){ toast('No image files found in that selection', 'err'); return; }
+  imgs.forEach(f=>{
+    State.images.push({
+      id: imgIdSeq++,
+      file: f,
+      name: f.name,
+      size: f.size,
+      type: f.type || (/\.(jpe?g)$/i.test(f.name||'') ? 'image/jpeg' : ''),
+      url: URL.createObjectURL(f),
+      selected: true
+    });
+  });
+  document.getElementById('thumbArea').style.display = 'block';
+  renderThumbs();
+  updateProcessBtn();
+}
+
+function renderThumbs(){
+  const grid = document.getElementById('thumbGrid');
+  grid.innerHTML = State.images.map(im => `
+    <div class="thumb ${im.selected?'sel':''}" data-id="${im.id}">
+      <img src="${im.url}" loading="lazy">
+      <div class="chk" data-act="toggle"><svg viewBox="0 0 24 24" fill="none" stroke="#0E141B" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+      <div class="rm" data-act="remove">✕</div>
+      ${im.type !== 'image/jpeg' ? '<div class="warn-tag">no EXIF</div>' : ''}
+      <div class="name">${escapeHtml(im.name)}</div>
+    </div>`).join('');
+  grid.querySelectorAll('.thumb').forEach(el=>{
+    const id = +el.dataset.id;
+    el.querySelector('[data-act="toggle"]').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const im = State.images.find(i=>i.id===id);
+      im.selected = !im.selected;
+      renderThumbs();
+    });
+    el.querySelector('[data-act="remove"]').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const idx = State.images.findIndex(i=>i.id===id);
+      URL.revokeObjectURL(State.images[idx].url);
+      State.images.splice(idx,1);
+      if(!State.images.length) document.getElementById('thumbArea').style.display='none';
+      renderThumbs();
+      updateProcessBtn();
+    });
+  });
+  const total = State.images.length;
+  const sel = State.images.filter(i=>i.selected).length;
+  document.getElementById('selCount').textContent = `${sel} of ${total} selected`;
+  document.getElementById('selectAllChk').checked = total>0 && sel===total;
+  updateProcessBtn();
+}
+
+/* ============================= AUTO-SAVE FOLDER ============================= */
+const HAS_DIR_PICKER = typeof window.showDirectoryPicker === 'function';
+function folderHandleKey(){ return 'auto-save-dir:' + (currentUser ? currentUser.uid : 'anon'); }
+
+async function loadAutoSaveDir(){
+  autoSaveDirHandle = null;
+  State.autoSaveDirName = null;
+  if(!HAS_DIR_PICKER) return;
+  try{
+    const handle = await idbGet('handles', folderHandleKey());
+    if(handle){
+      autoSaveDirHandle = handle;
+      State.autoSaveDirName = handle.name;
+    }
+  }catch(e){ /* no stored handle yet for this user on this device */ }
+}
+
+function renderAutoSaveUI(){
+  const row = document.getElementById('autoSaveRow');
+  const status = document.getElementById('autoSaveStatus');
+  const clearBtn = document.getElementById('clearFolderBtn');
+
+  if(!HAS_DIR_PICKER){
+    row.innerHTML = '<div style="font-size:12px; color:var(--text-faint);">Folder save needs Chrome or Edge — in this browser, use "Download ZIP" and choose the folder in the save dialog each time.</div>';
+    document.getElementById('processToFolderBtn').style.display = 'none';
+    return;
+  }
+  if(autoSaveDirHandle){
+    row.classList.remove('required');
+    status.innerHTML = `Saving to <b style="color:var(--text)">${escapeHtml(State.autoSaveDirName)}</b> on this device → a subfolder per job (work order + property ID)`;
+    clearBtn.style.display = 'inline-flex';
+  } else {
+    row.classList.add('required');
+    status.textContent = 'Not selected on this device — choose a folder to enable "save to folder". Until then, only "Download ZIP" is available.';
+    clearBtn.style.display = 'none';
+  }
+  updateProcessBtn();
+}
+
+// Explicit manual pick — whatever the user chooses becomes the root as-is.
+// A folder must be chosen here before "save to folder" is usable at all.
+// This is remembered per signed-in user, per device (browser permissions
+// for real folders can't be synced across machines).
+async function chooseAutoSaveFolder(){
+  try{
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    autoSaveDirHandle = handle;
+    State.autoSaveDirName = handle.name;
+    await idbSet('handles', folderHandleKey(), handle);
+    renderAutoSaveUI();
+    toast('Auto-save folder set to "' + handle.name + '"', 'ok');
+  }catch(e){
+    if(e && e.name !== 'AbortError') toast('Could not set that folder: ' + e.message, 'err');
+  }
+}
+
+async function clearAutoSaveFolder(){
+  autoSaveDirHandle = null;
+  State.autoSaveDirName = null;
+  try{ await idbDelete('handles', folderHandleKey()); }catch(e){}
+  renderAutoSaveUI();
+}
+
+async function ensureDirPermission(handle){
+  const opts = { mode: 'readwrite' };
+  if((await handle.queryPermission(opts)) === 'granted') return true;
+  if((await handle.requestPermission(opts)) === 'granted') return true;
+  return false;
+}
+
+/* ============================= PROCESS / EXPORT ============================= */
+function updateProcessBtn(){
+  const wo = document.getElementById('woNumber').value.trim();
+  const lat = document.getElementById('latField').value.trim();
+  const lon = document.getElementById('lonField').value.trim();
+  const selCount = State.images.filter(i=>i.selected).length;
+  const ok = wo && State.currentProperty && lat && lon && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon)) && selCount>0;
+  document.getElementById('processBtn').disabled = !ok;
+  const folderBtn = document.getElementById('processToFolderBtn');
+  // Folder-save stays disabled until a folder has been explicitly chosen —
+  // no auto-provisioning, no silent writes anywhere.
+  if(folderBtn) folderBtn.disabled = !ok || !HAS_DIR_PICKER || !autoSaveDirHandle;
+}
+
+function decToDmsRational(deg){
+  deg = Math.abs(deg);
+  const d = Math.floor(deg);
+  const minFloat = (deg-d)*60;
+  const m = Math.floor(minFloat);
+  const secFloat = (minFloat-m)*60;
+  const s = Math.round(secFloat*1000);
+  return [[d,1],[m,1],[s,1000]];
+}
+
+function dataURLToBlob(dataurl){
+  const arr = dataurl.split(',');
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+  return new Blob([u8arr], {type:mime});
+}
+
+function readFileAsDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function sanitizeForFilename(s){
+  return (s||'').toString().trim().replace(/[^a-zA-Z0-9\-_]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+}
+
+async function geoTagJpeg(dataUrl, lat, lon){
+  let exifObj;
+  try{ exifObj = piexif.load(dataUrl); }
+  catch(e){ exifObj = {"0th":{}, "Exif":{}, "GPS":{}, "1st":{}, "thumbnail":null}; }
+  if(!exifObj.GPS) exifObj.GPS = {};
+  const gps = {};
+  gps[piexif.GPSIFD.GPSLatitudeRef] = lat >= 0 ? 'N' : 'S';
+  gps[piexif.GPSIFD.GPSLatitude] = decToDmsRational(lat);
+  gps[piexif.GPSIFD.GPSLongitudeRef] = lon >= 0 ? 'E' : 'W';
+  gps[piexif.GPSIFD.GPSLongitude] = decToDmsRational(lon);
+  exifObj.GPS = gps;
+  if(exifObj.thumbnail){ /* keep as-is */ }
+  let exifBytes;
+  try{ exifBytes = piexif.dump(exifObj); }
+  catch(e){
+    // retry with a clean object if existing exif was malformed
+    exifBytes = piexif.dump({"0th":{}, "Exif":{}, "GPS":gps, "1st":{}, "thumbnail":null});
+  }
+  return piexif.insert(exifBytes, dataUrl);
+}
+
+function uniqueName(name, usedSet){
+  let n = name, i = 1;
+  const dot = name.lastIndexOf('.');
+  const base = dot>-1 ? name.slice(0,dot) : name;
+  const ext = dot>-1 ? name.slice(dot) : '';
+  while(usedSet.has(n)){ n = `${base}_${i++}${ext}`; }
+  usedSet.add(n);
+  return n;
+}
+
+// Tags every selected image (JPEGs get real GPS EXIF; other formats pass
+// through unchanged) and returns [{name, blob}], reporting progress via cb.
+async function tagSelectedImages(selected, lat, lon, progLabel, progFill){
+  const results = [];
+  const usedNames = new Set();
+  let done = 0;
+  for(const im of selected){
+    progLabel.textContent = `Processing ${im.name} (${done+1} of ${selected.length})…`;
+    let blob;
+    try{
+      if(im.type === 'image/jpeg' || im.type === 'image/jpg'){
+        const dataUrl = await readFileAsDataURL(im.file);
+        const tagged = await geoTagJpeg(dataUrl, lat, lon);
+        blob = dataURLToBlob(tagged);
+      } else {
+        blob = im.file;
+      }
+    }catch(e){
+      console.error('Failed to tag', im.name, e);
+      blob = im.file;
+    }
+    results.push({ name: uniqueName(im.name, usedNames), blob });
+    done++;
+    progFill.style.width = Math.round(done/selected.length*100) + '%';
+  }
+  return results;
+}
+
+async function processAndExport(mode){
+  const wo = document.getElementById('woNumber').value.trim();
+  const prop = State.currentProperty;
+  const lat = parseFloat(document.getElementById('latField').value);
+  const lon = parseFloat(document.getElementById('lonField').value);
+  const selected = State.images.filter(i=>i.selected);
+  if(!wo || !prop || isNaN(lat) || isNaN(lon) || !selected.length) return;
+
+  const btn = document.getElementById('processBtn');
+  const folderBtn = document.getElementById('processToFolderBtn');
+  btn.disabled = true;
+  if(folderBtn) folderBtn.disabled = true;
+  const progWrap = document.getElementById('progressWrap');
+  const progFill = document.getElementById('progressFill');
+  const progLabel = document.getElementById('progressLabel');
+  progWrap.classList.add('show');
+  progFill.style.width = '0%';
+  document.getElementById('resultBox').classList.remove('show');
+
+  let resultMsg;
+  try{
+    if(mode === 'folder'){
+      if(!autoSaveDirHandle) throw new Error('Choose a folder first');
+      const permOk = await ensureDirPermission(autoSaveDirHandle);
+      if(!permOk) throw new Error('Permission to write to that folder was not granted');
+      const subName = `${sanitizeForFilename(wo)}_${sanitizeForFilename(prop.code)}`;
+      const subDir = await autoSaveDirHandle.getDirectoryHandle(subName, { create: true });
+
+      const tagged = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
+      progLabel.textContent = 'Saving files…';
+      for(const f of tagged){
+        const fh = await subDir.getFileHandle(f.name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(f.blob);
+        await w.close();
+      }
+      resultMsg = `${selected.length} photo${selected.length>1?'s':''} tagged at ${lat.toFixed(6)}, ${lon.toFixed(6)} for ${prop.code} — saved to "${State.autoSaveDirName}/${subName}"`;
+    } else {
+      const tagged = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
+      progLabel.textContent = 'Building ZIP…';
+      const zip = new JSZip();
+      tagged.forEach(f => zip.file(f.name, f.blob));
+      const zipBlob = await zip.generateAsync({type:'blob'}, (meta)=>{
+        progFill.style.width = Math.round(meta.percent) + '%';
+      });
+      const dateStr = new Date().toISOString().slice(0,10);
+      const zipName = `${sanitizeForFilename(wo)}_${sanitizeForFilename(prop.code)}_${dateStr}.zip`;
+      const savedWhere = await saveBlob(zipBlob, zipName);
+      resultMsg = `${selected.length} photo${selected.length>1?'s':''} tagged at ${lat.toFixed(6)}, ${lon.toFixed(6)} for ${prop.code} — saved as ${zipName}${savedWhere ? ' in ' + savedWhere : ''}`;
+    }
+  }catch(e){
+    progWrap.classList.remove('show');
+    btn.disabled = false;
+    if(folderBtn) folderBtn.disabled = false;
+    updateProcessBtn();
+    if(e && e.name === 'AbortError'){ toast('Cancelled', 'err'); return; }
+    toast('Could not complete the export: ' + e.message, 'err');
+    return;
+  }
+
+  progWrap.classList.remove('show');
+  const rb = document.getElementById('resultBox');
+  rb.classList.add('show');
+  document.getElementById('resultText').textContent = resultMsg;
+
+  const logEntry = {
+    ts: new Date().toISOString(),
+    wo, propertyId: prop.code, address: prop.address,
+    lat, lon, count: selected.length,
+    files: selected.map(i=>i.name),
+    userEmail: userProfile ? userProfile.username : 'unknown',
+    listId: activeListId || null
+  };
+  State.activityLog.unshift(logEntry);
+  if(State.activityLog.length > 300) State.activityLog.length = 300;
+  await addActivityLogEntry(logEntry);
+  renderLog();
+
+  // Detailed audit trail — one entry per image, not per batch, as required
+  // for the 30-day rolling audit log (separate from the batch-level
+  // Activity Log above).
+  selected.forEach(img => {
+    addAuditLogEntry({
+      type: 'geotag',
+      uid: currentUser ? currentUser.uid : null,
+      username: userProfile ? userProfile.username : 'unknown',
+      wo, propertyId: prop.code, address: prop.address,
+      lat, lon,
+      filename: img.name,
+      fileType: img.type || (img.name.split('.').pop() || '').toLowerCase(),
+      listId: activeListId || null
+    });
+  });
+
+  // Privacy: once a batch of photos has been geotagged and exported, we
+  // don't keep them in memory any longer than needed — their object URLs
+  // are revoked and they're dropped from the thumbnail grid. (Photos were
+  // never uploaded to Firebase or any other server in the first place —
+  // this just clears the local browser copy too. Any photos you hadn't
+  // selected for this batch are left untouched.)
+  selected.forEach(img => URL.revokeObjectURL(img.url));
+  State.images = State.images.filter(im => !im.selected);
+  renderThumbs();
+  if(!State.images.length) document.getElementById('thumbArea').style.display = 'none';
+
+  btn.disabled = false;
+  if(folderBtn) folderBtn.disabled = false;
+  updateProcessBtn();
+}
+
+async function saveBlob(blob, filename){
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'ZIP archive', accept: {'application/zip': ['.zip']} }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return 'the location you chose';
+    }catch(e){
+      if(e && e.name === 'AbortError') throw e;
+      // fall through to default download
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  return 'your browser\'s downloads location';
+}
+
+/* ============================= PROPERTY DB TAB ============================= */
+function renderDbCount(){
+  document.getElementById('dbCount').textContent = State.properties.length;
+  document.getElementById('dbCount2').textContent = State.properties.length;
+}
+let dbFilter = '';
+function canEditActiveList(){ return isStaffOrAdmin() && !!activeListId && activeListId !== 'ALL'; }
+
+function renderDbTable(){
+  const body = document.getElementById('dbTableBody');
+  const rows = State.properties
+    .map((p,i)=>({...p, _i:i}))
+    .filter(p => !dbFilter || (p.code||'').toLowerCase().includes(dbFilter) || (p.address||'').toLowerCase().includes(dbFilter))
+    .slice(0, 400);
+  if(!rows.length){
+    body.innerHTML = `<tr><td colspan="3"><div class="empty-state">${State.properties.length ? 'No matches for that filter.' : 'No properties yet — upload an Excel/CSV or add rows manually.'}</div></td></tr>`;
+    return;
+  }
+  const editable = canEditActiveList();
+  body.innerHTML = rows.map(p => `
+    <tr data-i="${p._i}">
+      <td class="code"><input type="text" value="${escapeAttr(p.code)}" data-f="code" ${editable?'':'disabled'}></td>
+      <td><input type="text" value="${escapeAttr(p.address)}" data-f="address" ${editable?'':'disabled'}></td>
+      <td>${editable ? '<button class="btn small danger ghost" data-act="del" style="padding:4px 8px;">✕</button>' : ''}</td>
+    </tr>`).join('');
+  if(!editable) return;
+  body.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const tr = inp.closest('tr');
+      const i = +tr.dataset.i;
+      State.properties[i][inp.dataset.f] = inp.value;
+      await savePropertiesForList(activeListId, State.properties);
+    });
+  });
+  body.querySelectorAll('[data-act="del"]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const tr = btn.closest('tr');
+      const i = +tr.dataset.i;
+      State.properties.splice(i,1);
+      await savePropertiesForList(activeListId, State.properties);
+      renderDbCount();
+      renderDbTable();
+    });
+  });
+}
+
+/* ---- region selector (multi-region accounts get a switcher; single-region get a fixed label) ---- */
+async function renderListSelector(){
+  const box = document.getElementById('listSelectorBox');
+  const regions = myRegions();
+  if(regions.length > 1){
+    const options = REGIONS.filter(r => regions.includes(r.id)).map(r => `<option value="${escapeAttr(r.id)}" ${r.id===activeListId?'selected':''}>${escapeHtml(regionLabel(r.id))}</option>`).join('');
+    box.innerHTML = `
+      <label class="field-label" style="margin:0;">Region</label>
+      <select id="listSelect" class="mono-input" style="width:auto; display:inline-block;">
+        <option value="ALL" ${activeListId==='ALL'?'selected':''}>Both regions (merged)</option>
+        ${options}
+      </select>
+    `;
+    document.getElementById('listSelect').addEventListener('change', async (e)=>{
+      activeListId = e.target.value;
+      await db.collection('users').doc(currentUser.uid).set({ lastListId: activeListId }, { merge: true });
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · ${activeListId === 'ALL' ? regionsLabel(regions) : regionLabel(activeListId)}`;
+      State.properties = await loadPropertiesForList(activeListId);
+      dbFilter = ''; document.getElementById('dbSearch').value = '';
+      renderDbCount(); renderDbTable(); renderListSelector();
+    });
+  } else {
+    box.innerHTML = `<label class="field-label" style="margin:0;">Region</label> <span class="mono-input" style="display:inline-block; padding:8px 12px;">${escapeHtml(regionsLabel(regions))}</span>`;
+  }
+}
+
+function bindDbTab(){
+  document.getElementById('refreshDbBtn').addEventListener('click', async ()=>{
+    State.properties = await loadPropertiesForList(activeListId);
+    renderDbCount(); renderDbTable();
+    toast('Property database refreshed', 'ok');
+  });
+  document.getElementById('dbSearch').addEventListener('input', (e)=>{
+    dbFilter = e.target.value.trim().toLowerCase();
+    renderDbTable();
+  });
+  document.getElementById('addRowBtn').addEventListener('click', async ()=>{
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") to make changes', 'err'); return; }
+    State.properties.unshift({code:'', address:''});
+    await savePropertiesForList(activeListId, State.properties);
+    renderDbCount(); renderDbTable();
+    document.getElementById('dbSearch').value=''; dbFilter='';
+  });
+  document.getElementById('clearDbBtn').addEventListener('click', async ()=>{
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") to make changes', 'err'); return; }
+    if(!confirm(`Remove all properties from "${activeListId}"? This affects everyone assigned to that list.`)) return;
+    State.properties = [];
+    await savePropertiesForList(activeListId, State.properties);
+    renderDbCount(); renderDbTable();
+  });
+  document.getElementById('exportDbBtn').addEventListener('click', ()=>{
+    const csv = Papa.unparse(State.properties.map(p=>({'Property ID': p.code, 'Address': p.address})));
+    downloadText(csv, `property-list-${activeListId||'export'}.csv`, 'text/csv');
+  });
+
+  document.getElementById('uploadDbBtn').addEventListener('click', ()=>{
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") before uploading', 'err'); return; }
+    document.getElementById('dbFileInput').click();
+  });
+  document.getElementById('dbFileInput').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    try{
+      const rows = await parsePropertyFile(file);
+      if(!rows.length){ toast('No usable rows found in that file', 'err'); return; }
+      State.uploadParsed = rows;
+      document.getElementById('uploadPreview').textContent = `${rows.length} rows parsed for list "${activeListId}". Example: ${rows[0].code} — ${rows[0].address}`;
+      document.getElementById('uploadModeBox').style.display = 'block';
+    }catch(err){
+      toast('Could not parse that file: ' + err.message, 'err');
+    }
+  });
+  document.getElementById('cancelUploadBtn').addEventListener('click', ()=>{
+    State.uploadParsed = null;
+    document.getElementById('uploadModeBox').style.display = 'none';
+  });
+  document.getElementById('confirmUploadBtn').addEventListener('click', async ()=>{
+    if(!State.uploadParsed || !canEditActiveList()) return;
+    const mode = document.querySelector('input[name=uploadMode]:checked').value;
+    if(mode === 'replace'){
+      State.properties = State.uploadParsed;
+    } else {
+      const map = new Map(State.properties.map(p=>[p.code, p]));
+      State.uploadParsed.forEach(p => map.set(p.code, p));
+      State.properties = [...map.values()];
+    }
+    await savePropertiesForList(activeListId, State.properties);
+    State.uploadParsed = null;
+    document.getElementById('uploadModeBox').style.display = 'none';
+    renderDbCount(); renderDbTable(); renderListSelector();
+    toast(`Property list "${activeListId}" updated`, 'ok');
+  });
+}
+
+function parsePropertyFile(file){
+  return new Promise((resolve, reject)=>{
+    const ext = file.name.split('.').pop().toLowerCase();
+    if(ext === 'csv'){
+      Papa.parse(file, {
+        header:true, skipEmptyLines:true,
+        complete: (res)=> resolve(mapRowsToProperties(res.data)),
+        error: (err)=> reject(err)
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e)=>{
+        try{
+          const wb = XLSX.read(e.target.result, {type:'array'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+          resolve(mapRowsToProperties(rows));
+        }catch(err){ reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    }
+  });
+}
+
+function mapRowsToProperties(rows){
+  if(!rows.length) return [];
+  const keys = Object.keys(rows[0]);
+  const codeKey = keys.find(k => /code|id/i.test(k) && !/address/i.test(k)) || keys[0];
+  const addrKey = keys.find(k => /address/i.test(k)) || keys[1] || keys[0];
+  return rows
+    .map(r => ({ code: (r[codeKey]||'').toString().trim(), address: (r[addrKey]||'').toString().trim() }))
+    .filter(p => p.code);
+}
+
+function downloadText(text, filename, mime){
+  const blob = new Blob([text], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+/* ============================= ACTIVITY LOG TAB ============================= */
+function renderLog(){
+  document.getElementById('logCount').textContent = State.activityLog.length;
+  document.getElementById('logCount2').textContent = State.activityLog.length;
+  const list = document.getElementById('logList');
+  const controls = document.getElementById('logControls');
+  if(!isStaffOrAdmin()){
+    if(controls) controls.style.display = 'none';
+    list.innerHTML = '<div class="empty-state">The shared activity log is visible to Admin and Staff only. Your completed jobs are still recorded — you just can\'t browse everyone\'s here.</div>';
+    return;
+  }
+  if(controls) controls.style.display = '';
+  if(!State.activityLog.length){
+    list.innerHTML = '<div class="empty-state">No activity yet. Processed batches will appear here.</div>';
+    return;
+  }
+  list.innerHTML = State.activityLog.map(e => `
+    <div class="log-item">
+      <div class="top-row">
+        <span class="wo">${escapeHtml(e.wo)} — ${escapeHtml(e.propertyId)}</span>
+        <span class="ts">${new Date(e.ts).toLocaleString()}</span>
+      </div>
+      <div class="addr">${escapeHtml(e.address)}</div>
+      <div class="meta">${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} · ${e.count} photo${e.count>1?'s':''} · ${escapeHtml(e.userEmail || 'unknown')} · ${escapeHtml(e.listId || '—')}</div>
+    </div>`).join('');
+}
+function bindLogTab(){
+  document.getElementById('refreshLogBtn').addEventListener('click', async ()=>{
+    State.activityLog = await loadActivityLog();
+    renderLog();
+  });
+  document.getElementById('exportLogBtn').addEventListener('click', ()=>{
+    const csv = Papa.unparse(State.activityLog.map(e=>({
+      'Timestamp': e.ts, 'Work Order': e.wo, 'Property ID': e.propertyId, 'Address': e.address,
+      'Latitude': e.lat, 'Longitude': e.lon, 'Photo Count': e.count, 'Processed By': e.userEmail || '', 'Files': e.files.join('; ')
+    })));
+    downloadText(csv, 'activity-log.csv', 'text/csv');
+  });
+  document.getElementById('clearLogBtn').addEventListener('click', async ()=>{
+    if(!confirm('Clear the activity log for everyone? This deletes it from the shared record, not just your view.')) return;
+    try{
+      await clearActivityLogCloud();
+      State.activityLog = [];
+      renderLog();
+      toast('Activity log cleared', 'ok');
+    }catch(e){
+      toast('Could not clear the log: ' + e.message, 'err');
+    }
+  });
+}
+
+/* ============================= UTIL ============================= */
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+/* ============================= BIND ALL ============================= */
+function bindEvents(){
+  bindTabs();
+  bindPropertySearch();
+  bindImageIntake();
+  bindDbTab();
+  bindLogTab();
+  bindUsersTab();
+  bindAuditTab();
+
+  document.getElementById('woNumber').addEventListener('input', updateProcessBtn);
+  document.getElementById('latField').addEventListener('input', ()=>{ updateStamp(); updateProcessBtn(); });
+  document.getElementById('lonField').addEventListener('input', ()=>{ updateStamp(); updateProcessBtn(); });
+  document.getElementById('reLookupBtn').addEventListener('click', geocodeCurrent);
+  document.getElementById('processBtn').addEventListener('click', ()=>processAndExport('dialog'));
+  document.getElementById('processToFolderBtn').addEventListener('click', ()=>processAndExport('folder'));
+  document.getElementById('chooseFolderBtn').addEventListener('click', chooseAutoSaveFolder);
+  document.getElementById('clearFolderBtn').addEventListener('click', clearAutoSaveFolder);
+}
+
+init();
+</script>
+</body>
+</html>!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
