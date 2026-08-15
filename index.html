@@ -10,6 +10,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <style>
   :root{
     --bg:#0E141B;
@@ -50,6 +54,29 @@
   }
   svg.contours{position:fixed; inset:0; width:100%; height:100%; opacity:0.05; pointer-events:none; z-index:0;}
   .wrap{position:relative; z-index:1; max-width:900px; margin:0 auto; padding:28px 20px 90px;}
+  .wrap.hidden{display:none;}
+
+  /* ---- login overlay ---- */
+  #loginOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
+  #loginOverlay.hidden{display:none;}
+  #listAssignOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
+  #listAssignOverlay.hidden{display:none;}
+  .login-card{width:100%; max-width:380px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:28px 26px;}
+  .login-card h2{margin:0 0 4px; font-size:17px; font-weight:800;}
+  .login-card p.sub{margin:0 0 20px; font-size:12.5px; color:var(--text-dim);}
+  .login-tabs{display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--border-soft);}
+  .login-tab{background:none; border:none; color:var(--text-faint); font-family:var(--sans); font-weight:600; font-size:12.5px; padding:8px 4px 10px; cursor:pointer; border-bottom:2px solid transparent;}
+  .login-tab.active{color:var(--amber); border-bottom-color:var(--amber);}
+  .login-field{margin-bottom:12px;}
+  .login-error{font-size:12px; color:var(--red); margin:10px 0 0; min-height:1px; line-height:1.5;}
+  .login-links{display:flex; justify-content:space-between; align-items:center; margin-top:14px;}
+  .login-links button{background:none; border:none; color:var(--teal); font-size:11.5px; cursor:pointer; padding:0; font-family:var(--sans);}
+  .login-divider{display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:11px; margin-bottom:16px;}
+  .login-divider::before, .login-divider::after{content:""; flex:1; height:1px; background:var(--border-soft);}
+  .user-badge{display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-dim); font-family:var(--mono);}
+  .user-badge .dot{width:7px; height:7px; border-radius:50%; background:var(--green); flex-shrink:0;}
+  .user-badge button{background:none; border:none; color:var(--text-faint); text-decoration:underline; cursor:pointer; font-family:var(--sans); font-size:11.5px; padding:0;}
+  .header-right{display:flex; flex-direction:column; align-items:flex-end; gap:10px;}
 
   header.top{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:26px; flex-wrap:wrap;}
   .brand{display:flex; align-items:center; gap:12px;}
@@ -83,12 +110,20 @@
   label.field-label{display:block; font-size:11.5px; font-weight:600; color:var(--text-dim); margin-bottom:6px; letter-spacing:0.02em; text-transform:uppercase;}
   .row{display:flex; gap:14px; flex-wrap:wrap;}
   .row > div{flex:1; min-width:200px;}
-  input[type=text], input[type=number], input[type=search]{
+  input[type=text], input[type=number], input[type=search], input[type=password], input[type=email]{
     width:100%; background:var(--bg-inset); border:1px solid var(--border); color:var(--text);
     padding:10px 12px; border-radius:5px; font-family:var(--sans); font-size:13.5px; outline:none;
+    box-sizing:border-box; height:40px;
   }
   input:focus{border-color:var(--teal);}
   input[readonly]{color:var(--text-dim);}
+  input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus{
+    -webkit-text-fill-color: var(--text) !important;
+    -webkit-box-shadow: 0 0 0px 1000px var(--bg-inset) inset !important;
+    box-shadow: 0 0 0px 1000px var(--bg-inset) inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+    caret-color: var(--text);
+  }
   .mono-input{font-family:var(--mono) !important; font-size:13px !important;}
 
   .stamp{
@@ -196,6 +231,26 @@
   .log-item .meta{color:var(--text-faint); font-size:11px; margin-top:3px; font-family:var(--mono);}
   .empty-state{text-align:center; padding:30px 10px; color:var(--text-faint); font-size:12.5px;}
 
+  .role-badge{font-family:var(--mono); font-size:10px; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; text-transform:uppercase; display:inline-block;}
+  .role-badge.admin{color:var(--amber); background:rgba(242,169,59,0.12); border:1px solid var(--amber-dim);}
+  .role-badge.staff{color:var(--teal); background:rgba(79,166,186,0.12); border:1px solid var(--teal-dim);}
+  .role-badge.trade{color:var(--text-dim); background:rgba(141,153,166,0.12); border:1px solid var(--border);}
+  .status-pill{font-family:var(--mono); font-size:10px; letter-spacing:0.03em; display:inline-flex; align-items:center; gap:5px;}
+  .status-pill .dot{width:6px; height:6px; border-radius:50%; display:inline-block;}
+  .status-pill.active .dot{background:var(--green);}
+  .status-pill.active{color:var(--green);}
+  .status-pill.pending .dot{background:var(--text-faint);}
+  .status-pill.pending{color:var(--text-faint);}
+  .user-actions{display:flex; gap:6px; flex-wrap:wrap;}
+  .audit-item{padding:10px 0; border-bottom:1px solid var(--border-soft); font-size:12px;}
+  .audit-item:last-child{border-bottom:none;}
+  .audit-item .top-row{display:flex; justify-content:space-between; gap:10px;}
+  .audit-item .kind{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:3px; text-transform:uppercase;}
+  .audit-item .kind.login{color:var(--teal); border:1px solid var(--teal-dim);}
+  .audit-item .kind.geotag{color:var(--amber); border:1px solid var(--amber-dim);}
+  .audit-item .ts{color:var(--text-faint); font-size:11px;}
+  .audit-item .detail{color:var(--text-dim); margin-top:3px; font-family:var(--mono); font-size:11px;}
+
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--bg-elevated);
     border:1px solid var(--border); padding:11px 18px; border-radius:6px; font-size:12.5px; opacity:0; pointer-events:none;
@@ -222,7 +277,47 @@
   </g>
 </svg>
 
-<div class="wrap">
+<div id="loginOverlay">
+  <div class="login-card">
+    <h2 id="loginHeading">Sign in to Field GeoTag Kit</h2>
+    <p class="sub" id="loginSub">Use the username and password your Admin or Staff manager gave you.</p>
+
+    <form id="loginForm">
+      <div class="login-field">
+        <label class="field-label">Username</label>
+        <input type="text" id="loginUsername" required autocomplete="username" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="login-field">
+        <label class="field-label">Password</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <div class="login-field" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="rememberLoginCheck" style="width:auto; margin:0;">
+        <label for="rememberLoginCheck" style="font-size:11.5px; color:var(--text-dim); text-transform:none; font-weight:400; letter-spacing:0; margin:0; cursor:pointer;">Remember my login on this device</label>
+      </div>
+      <button type="submit" class="btn primary" id="loginSubmitBtn" style="width:100%; justify-content:center;">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+    <div class="login-links">
+      <span style="font-size:11.5px; color:var(--text-faint);">Forgot your password? Contact your Switched On Housing representative to recover it — passwords are only ever reset by an Admin or Staff account.</span>
+    </div>
+  </div>
+</div>
+
+<div id="listAssignOverlay" class="hidden">
+  <div class="login-card">
+    <h2>Which property list are you working with?</h2>
+    <p class="sub">Your account isn't linked to a region yet. Pick the region you'll be working in — this is remembered for next time, and only Admin or Staff can change it later.</p>
+    <div class="login-field">
+      <label class="field-label">Property list</label>
+      <select id="listAssignSelect" class="mono-input" style="width:100%;"></select>
+    </div>
+    <button type="button" class="btn primary" id="listAssignConfirmBtn" style="width:100%; justify-content:center;">Continue</button>
+    <div class="login-error" id="listAssignError"></div>
+  </div>
+</div>
+
+<div class="wrap hidden" id="mainWrap">
   <header class="top">
     <div class="brand">
       <div class="brand-mark">
@@ -233,12 +328,18 @@
         <p>NZ PROPERTY PHOTO GEOTAGGING</p>
       </div>
     </div>
-    <div class="top-tabs">
-      <button class="tab-btn active" data-tab="main">Job</button>
-      <button class="tab-btn" data-tab="db">Property DB <span class="badge-count" id="dbCount">0</span></button>
-      <button class="tab-btn" data-tab="log">Activity Log <span class="badge-count" id="logCount">0</span></button>
+    <div class="header-right">
+      <div class="user-badge"><span class="dot"></span><span id="userEmailLabel"></span><button id="signOutBtn">Sign out</button></div>
+      <div class="top-tabs">
+        <button class="tab-btn active" data-tab="main">Job</button>
+        <button class="tab-btn" data-tab="db">Property DB <span class="badge-count" id="dbCount">0</span></button>
+        <button class="tab-btn" data-tab="log">Activity Log <span class="badge-count" id="logCount">0</span></button>
+        <button class="tab-btn" data-tab="users" id="usersTabBtn" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
+        <button class="tab-btn" data-tab="audit" id="auditTabBtn" style="display:none;">Audit Log</button>
+      </div>
     </div>
   </header>
+
 
   <!-- ===================== MAIN TAB ===================== -->
   <div class="drawer show" id="tab-main">
@@ -339,7 +440,7 @@
         <h3>✓ Done</h3>
         <p id="resultText"></p>
       </div>
-      <div class="note"><b>Note:</b> location lookups use OpenStreetMap's public geocoder and require your browser to reach the internet. If a lookup fails, enter latitude/longitude manually above. GPS EXIF writing works on JPEG files; other image types are included without location data. The property database, geocode cache and activity log are stored in this browser and will still be here next time you open this file — clearing your browser's site data will remove them. "Save to folder" only becomes available once you've explicitly chosen a folder above — nothing is written anywhere without that.</div>
+      <div class="note"><b>Note:</b> location lookups use OpenStreetMap's public geocoder and require your browser to reach the internet. If a lookup fails, enter latitude/longitude manually above. GPS EXIF writing works on JPEG files; other image types are included without location data. The property database, geocode cache and activity log are shared with everyone signed in to this account. The auto-save folder is remembered only on this device, for your account. "Save to folder" only becomes available once you've explicitly chosen a folder above — nothing is written anywhere without that.</div>
     </div>
   </div>
 
@@ -347,11 +448,14 @@
   <div class="drawer" id="tab-db">
     <div class="panel">
       <div class="panel-head"><span class="eyebrow">DB</span><h2>Property database</h2></div>
-      <div class="panel-sub">The property ID → address list used for lookups. Update it by uploading an Excel/CSV file, or edit rows directly below. Stored in this browser.</div>
+      <div class="panel-sub" id="dbPanelSub">Each trade region has its own property list; Admin and Staff can view any region, or both merged. Update the active list by uploading an Excel/CSV file, or edit rows directly below.</div>
+
+      <div class="autosave-row" id="listSelectorBox" style="margin-bottom:16px;"></div>
 
       <div class="flex-between">
         <div style="font-size:12.5px; color:var(--text-dim);"><span id="dbCount2">0</span> properties loaded</div>
         <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshDbBtn">↻ Refresh</button>
           <button class="btn small" id="uploadDbBtn">Upload Excel/CSV</button>
           <button class="btn small ghost" id="exportDbBtn">Export CSV</button>
           <button class="btn small ghost danger" id="clearDbBtn">Clear all</button>
@@ -388,10 +492,11 @@
   <div class="drawer" id="tab-log">
     <div class="panel">
       <div class="panel-head"><span class="eyebrow">LOG</span><h2>Activity log</h2></div>
-      <div class="panel-sub">A record of every batch processed on this device, by work order.</div>
-      <div class="flex-between" style="margin-bottom:10px;">
+      <div class="panel-sub">A shared record of every batch processed, by work order — visible to Admin and Staff.</div>
+      <div class="flex-between" style="margin-bottom:10px;" id="logControls">
         <span style="font-size:12.5px; color:var(--text-dim);"><span id="logCount2">0</span> entries</span>
         <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshLogBtn">↻ Refresh</button>
           <button class="btn small ghost" id="exportLogBtn">Export CSV</button>
           <button class="btn small ghost danger" id="clearLogBtn">Clear log</button>
         </div>
@@ -400,16 +505,305 @@
     </div>
   </div>
 
+  <!-- ===================== USERS TAB (Admin / Staff) ===================== -->
+  <div class="drawer" id="tab-users">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">USR</span><h2 id="usersPanelTitle">Users</h2></div>
+      <div class="panel-sub" id="usersPanelSub">Add and manage accounts. Every account is created here — there's no self-signup.</div>
+
+      <div class="flex-between" style="margin-bottom:14px;">
+        <div style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</div>
+        <button class="btn small primary" id="addUserBtn">+ Add user</button>
+      </div>
+
+      <div id="addUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+        <div class="row">
+          <div>
+            <label class="field-label">Username</label>
+            <input type="text" id="newUserUsername" class="mono-input" placeholder="e.g. jsmith" autocapitalize="off" spellcheck="false">
+          </div>
+          <div>
+            <label class="field-label">Password</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="newUserPassword" class="mono-input" placeholder="password">
+              <button type="button" class="btn small ghost" id="genPasswordBtn">Generate</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <div id="newUserRoleBox">
+            <label class="field-label">Role</label>
+            <select id="newUserRole" class="mono-input" style="width:100%;">
+              <option value="trade">Trade</option>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div id="newUserListBox">
+            <label class="field-label">Region <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(Trade only — optional, can be set on first login)</span></label>
+            <select id="newUserList" class="mono-input" style="width:100%;"></select>
+          </div>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:10px;">
+          <button class="btn small primary" id="createUserBtn">Create account</button>
+          <button class="btn small ghost" id="cancelAddUserBtn">Cancel</button>
+        </div>
+        <div class="login-error" id="addUserError"></div>
+      </div>
+
+      <div id="emailTemplateBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+        <label class="field-label">Login details email <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(edit before sending)</span></label>
+        <textarea id="emailTemplateBody" style="width:100%; min-height:140px; background:var(--bg-panel); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:10px 12px; font-family:var(--sans); font-size:13px;"></textarea>
+        <div style="margin-top:10px; display:flex; gap:10px;">
+          <a class="btn small primary" id="openMailBtn" href="#" style="text-decoration:none;">Open in email client</a>
+          <button class="btn small ghost" id="closeEmailTemplateBtn">Close</button>
+        </div>
+        <div class="note" style="margin-top:10px; padding-top:0; border-top:none;">This only works right after creating or resetting an account — the plaintext password is never stored, so it's only available here for a moment.</div>
+      </div>
+
+      <div class="db-scroll" style="max-height:none;">
+        <table class="db-table">
+          <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:210px"></th></tr></thead>
+          <tbody id="usersTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== AUDIT LOG TAB (Admin / Staff) ===================== -->
+  <div class="drawer" id="tab-audit">
+    <div class="panel">
+      <div class="panel-head"><span class="eyebrow">AUD</span><h2>Audit log</h2></div>
+      <div class="panel-sub">Every login, and every photo geotagged — work order, property, coordinates, filename and file type, per image. Rolling 30-day window; older entries age out automatically.</div>
+      <div class="flex-between" style="margin-bottom:10px;">
+        <span style="font-size:12.5px; color:var(--text-dim);"><span id="auditCount2">0</span> entries · <span id="auditRange"></span></span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn small ghost" id="refreshAuditBtn">↻ Refresh</button>
+          <button class="btn small ghost" id="exportAuditCsvBtn">Export CSV</button>
+          <button class="btn small ghost" id="exportAuditZipBtn">Export ZIP</button>
+        </div>
+      </div>
+      <div id="auditList"></div>
+    </div>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+/* =============================================================================
+   FIREBASE SETUP — do this once before deploying:
+   1. Go to https://console.firebase.google.com and create a free project.
+   2. Build > Authentication > Get started > enable "Email/Password".
+      (Accounts use a made-up username, not a real email — see USERNAME LOGIN
+      below for how that works under the hood. You don't need to touch this
+      again after enabling the provider.)
+   3. Build > Firestore Database > Create database (production mode is fine —
+      the security rules below lock it down).
+   4. Project settings (gear icon) > General > "Your apps" > Add app > Web (</>)
+      — copy the firebaseConfig object it gives you into FIREBASE_CONFIG below.
+   5. Authentication > Settings > Authorized domains > add your GitHub Pages
+      domain (e.g. yourorg.github.io) so login works once deployed.
+   6. Firestore Database > Rules > paste this, then Publish:
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+
+            function isSignedIn() { return request.auth != null; }
+            function myRole() {
+              return isSignedIn()
+                ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+                : null;
+            }
+            function isAdmin() { return myRole() == 'admin'; }
+            function isStaffOrAdmin() { return myRole() == 'staff' || myRole() == 'admin'; }
+            function myListId() {
+              return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.listId;
+            }
+
+            match /users/{uid} {
+              allow read: if isSignedIn() && (request.auth.uid == uid || isStaffOrAdmin());
+              // Accounts are created/edited by Admin (any role) or Staff (trade only).
+              allow create: if isSignedIn() && (
+                isAdmin() ||
+                (isStaffOrAdmin() && request.resource.data.role == 'trade')
+              );
+              allow update: if isSignedIn() && (
+                request.auth.uid == uid ||
+                isAdmin() ||
+                (isStaffOrAdmin() && resource.data.role == 'trade' && request.resource.data.role == 'trade')
+              );
+              allow delete: if isSignedIn() && (
+                isAdmin() ||
+                (isStaffOrAdmin() && resource.data.role == 'trade')
+              );
+            }
+
+            match /usernames/{name} {
+              // Used only to check "is this username already taken" before
+              // creating an account, and to look up a user's uid by username.
+              allow read: if isSignedIn();
+              allow write: if isSignedIn() && isStaffOrAdmin();
+            }
+
+            match /property_lists/{listId} {
+              // Trade accounts can read only their own region's list, and
+              // cannot write to it at all — only Admin and Staff can add,
+              // edit, or upload properties. Admin/Staff can read or write
+              // either region.
+              allow read: if isStaffOrAdmin() || (isSignedIn() && myListId() == listId);
+              allow write: if isStaffOrAdmin();
+              match /chunks/{chunkId} {
+                allow read: if isStaffOrAdmin() || (isSignedIn() && myListId() == listId);
+                allow write: if isStaffOrAdmin();
+              }
+            }
+
+            match /geocode_cache/{code} {
+              allow read, write: if isSignedIn();
+            }
+
+            match /activity_log/{entryId} {
+              allow read: if isStaffOrAdmin();
+              allow create: if isSignedIn();
+              allow update, delete: if isStaffOrAdmin();
+            }
+
+            match /audit_log/{entryId} {
+              allow read: if isStaffOrAdmin();
+              allow create: if isSignedIn();
+              allow update, delete: if isStaffOrAdmin();
+            }
+          }
+        }
+      This enforces real separation between the two trade regions — not
+      just hidden UI — so a signed-in trade user genuinely cannot read
+      the other region's property list, write to any property list at
+      all (only Admin/Staff can add properties), or read the shared
+      activity log, audit log, or other users' accounts, even via direct
+      Firestore calls.
+   7. Firestore Database > Indexes (or "TTL") tab > create a TTL policy on
+      collection "audit_log", field "expiresAt". This is what gives the
+      audit log its rolling 30-day window — Firestore auto-deletes entries
+      once their expiresAt timestamp passes, no client code needed. Deletion
+      typically happens within 24 hours of expiry, not instantly.
+
+   THREE ACCOUNT TYPES — role lives on users/{uid}.role, set only by Admin
+   (or Staff, for trade accounts) at creation time. It is never inferred
+   from a username or email pattern:
+     - "admin"  — full access: create/remove any account (Admin, Staff or
+       Trade), reset any password, everything Staff can do.
+     - "staff"  — can create/remove Trade accounts and reset Trade
+       passwords only; sees both regions' property lists (or merged) and
+       the shared Activity Log and Audit Log; can add, edit, and upload
+       properties; cannot touch other Staff/Admin accounts.
+     - "trade"  — signs in with an Admin/Staff-issued username + password;
+       assigned to exactly one of the two fixed regions (Region 07 —
+       Hawke's Bay, Gisborne, Manawatu — or Region 10 — Christchurch,
+       TOTS) and walled off from the other; read-only view of their
+       region's property list (only Admin/Staff can add or change
+       properties); no access-management UI at all.
+   There is no self-signup — every account is created from the "Users" tab
+   by an existing Admin or Staff account.
+
+   USERNAME LOGIN — Firebase Auth is built around email/password, so under
+   the hood each username is mapped to a fake, never-emailed address of the
+   form "<username>@fieldgeotag.internal" purely so Firebase Auth has
+   something to key on. Nobody needs to know this — the UI only ever shows
+   plain usernames. This is also why the old "Forgot password?" self-service
+   flow is gone: a password-reset email would go nowhere, since that address
+   isn't real. Resets are done by an Admin or Staff from the Users tab
+   instead (see ADMIN PASSWORD RESET below).
+
+   BOOTSTRAPPING THE FIRST ADMIN — the Users tab can only be used by
+   someone who's already an Admin, so the very first Admin account has to
+   be created by hand, once, directly in the Firebase console:
+   1. Authentication > Users > Add user.
+        Email:    kishanp@fieldgeotag.internal
+        Password: kipeeric
+   2. Copy the new user's UID (shown in the Users list after creation).
+   3. Firestore Database > Start collection > collection ID "users" >
+      document ID = that UID, with these fields:
+        username      (string)  = KishanP
+        usernameLower (string)  = kishanp
+        role          (string)  = admin
+        listId        (null)
+        lastListId    (null)
+        createdAt     (timestamp, now)
+        createdBy     (null)
+        lastLoginAt   (null)
+   4. Firestore Database > "usernames" collection > document ID "kishanp",
+      with a single field: uid (string) = that same UID.
+   Sign in with username "KishanP" / password "kipeeric" (not case
+   sensitive) — change this password immediately after first login using
+   the Users tab's "Reset password" on your own account, since it's
+   currently written down in this file.
+
+   ADMIN PASSWORD RESET (optional, needs Cloud Functions + Blaze plan) —
+   creating a NEW account with a chosen password works entirely client-side
+   (see adminCreateUser below) and costs nothing extra. But changing an
+   EXISTING user's password to an Admin-chosen value is something the
+   Firebase client SDK cannot do for anyone other than the currently signed
+   in user — that's an Admin SDK operation, which means a small Cloud
+   Function on the (still effectively free at this scale) Blaze plan. A
+   companion file, functions/index.js, has the deployable function and full
+   deploy instructions. Until that's deployed, "Reset password" in the
+   Users tab will show a clear message instead of failing silently — the
+   rest of the app works fully without it.
+============================================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+const USERNAME_EMAIL_DOMAIN = 'fieldgeotag.internal'; // fake domain used to key Firebase Auth off usernames instead of real emails
+const AUDIT_LOG_RETENTION_DAYS = 30;
+// The two fixed trade regions. Trade accounts belong to exactly one and
+// are walled off from the other's data — both in the UI and for real in
+// the Firestore security rules (a trade account's myListId() only ever
+// equals their own region's list ID). Admin/Staff can view either, or
+// both merged as "All". This app supports exactly these two regions; it
+// is not an open-ended "add new list" tool.
+const REGIONS = [
+  { id: 'R07', label: 'Region 07', desc: "Hawke's Bay, Gisborne, Manawatu" },
+  { id: 'R10', label: 'Region 10', desc: 'Christchurch, TOTS' }
+];
+function regionLabel(id){
+  const r = REGIONS.find(r => r.id === id);
+  return r ? `${r.label} (${r.desc})` : (id || '—');
+}
+async function ensureRegionListsExist(){
+  for(const r of REGIONS){
+    try{ await createNewList(r.id); }catch(e){ /* already exists — fine */ }
+  }
+}
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let currentUser = null;
+let userProfile = null; // { username, usernameLower, role, listId, lastListId }
+
+function usernameToEmail(usernameLower){ return `${usernameLower}@${USERNAME_EMAIL_DOMAIN}`; }
+function getSecondaryApp(){
+  // A second, isolated Firebase App instance so that creating another
+  // user's Auth account (which normally signs the CALLING browser in as
+  // that new user) never hijacks the admin's own active session.
+  let sec = firebase.apps.find(a => a.name === 'Secondary');
+  if(!sec) sec = firebase.initializeApp(FIREBASE_CONFIG, 'Secondary');
+  return sec;
+}
+
 /* ============================= STATE ============================= */
 const State = {
   properties: [],        // [{code, address}]
-  geoCache: {},           // code -> {lat, lon, source}
-  activityLog: [],        // [{ts, wo, propertyId, address, lat, lon, count, files}]
+  geoCache: {},           // code -> {lat, lon, source}  (in-memory session cache, backed by Firestore)
+  activityLog: [],        // [{ts, wo, propertyId, address, lat, lon, count, files, userEmail}]
+  auditLog: [],            // [{type:'login'|'geotag', ts, username, role, wo, propertyId, address, lat, lon, filename, fileType, listId}]
   images: [],              // [{id, file, name, size, type, url, selected}]
   currentProperty: null,   // {code, address}
   uploadParsed: null,      // pending parsed rows awaiting confirm
@@ -417,18 +811,14 @@ const State = {
 };
 let imgIdSeq = 1;
 let autoSaveDirHandle = null;
+const sessionPasswords = new Map(); // uid -> plaintext password, only ever held in memory for this tab, only right after create/reset
 
-/* ============================= STORAGE HELPERS =============================
-   Two backends:
-   - window.storage: only exists when this file is running inside Claude.ai's
-     artifact preview (in-chat). Data there is scoped to that environment.
-   - IndexedDB: used whenever this file is opened as its own standalone HTML
-     file (downloaded, double-clicked, or served locally). This is the path
-     that actually matters for day-to-day use, and it genuinely persists
-     across refreshes/reopens in the same browser.
+/* ============================= LOCAL FOLDER-HANDLE STORAGE =============================
+   The auto-save folder is a native browser permission tied to one device —
+   it can't live in Firestore. It's the only thing still stored locally
+   (IndexedDB), scoped per signed-in user so two people sharing a machine
+   each get their own remembered folder.
 */
-const HAS_CLAUDE_STORAGE = (typeof window.storage !== 'undefined') && window.storage && typeof window.storage.get === 'function';
-
 let _idbPromise = null;
 function openDB(){
   if(_idbPromise) return _idbPromise;
@@ -436,9 +826,8 @@ function openDB(){
     if(!('indexedDB' in window)){ reject(new Error('IndexedDB unavailable')); return; }
     const req = indexedDB.open('geotag-kit-db', 1);
     req.onupgradeneeded = ()=>{
-      const db = req.result;
-      if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
-      if(!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+      const idb = req.result;
+      if(!idb.objectStoreNames.contains('handles')) idb.createObjectStore('handles');
     };
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
@@ -446,61 +835,686 @@ function openDB(){
   return _idbPromise;
 }
 function idbGet(store, key){
-  return openDB().then(db => new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readonly');
     const req = tx.objectStore(store).get(key);
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
   }));
 }
 function idbSet(store, key, value){
-  return openDB().then(db => new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readwrite');
     tx.objectStore(store).put(value, key);
     tx.oncomplete = ()=> resolve();
     tx.onerror = ()=> reject(tx.error);
   }));
 }
 function idbDelete(store, key){
-  return openDB().then(db => new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
+  return openDB().then(idb => new Promise((resolve, reject)=>{
+    const tx = idb.transaction(store, 'readwrite');
     tx.objectStore(store).delete(key);
     tx.oncomplete = ()=> resolve();
     tx.onerror = ()=> reject(tx.error);
   }));
 }
 
-async function storeGet(key, fallback){
+/* ============================= AUTH ============================= */
+/* "Remember my login" — an OPT-IN convenience for shared field devices
+   where the same trade worker signs in repeatedly. When checked, the
+   username and password are stored in this browser's localStorage (not
+   Firestore, not synced anywhere) purely to prefill the form next time —
+   both fields stay fully editable, so a different worker on the same
+   device just types over them. Unticking the box and signing in again
+   clears whatever was remembered. This trades a small amount of
+   plaintext-on-device risk for convenience — appropriate for a
+   single-purpose field tool, but worth knowing: anyone with access to
+   this browser profile could read it via dev tools. */
+const REMEMBER_LOGIN_KEY = 'geotag-remembered-login';
+function loadRememberedLogin(){
   try{
-    if(HAS_CLAUDE_STORAGE){
-      const r = await window.storage.get(key, false);
-      return r ? JSON.parse(r.value) : fallback;
-    }
-    const v = await idbGet('kv', key);
-    return v !== undefined ? v : fallback;
-  }catch(e){ return fallback; }
+    const raw = localStorage.getItem(REMEMBER_LOGIN_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
 }
-async function storeSet(key, value){
-  try{
-    if(HAS_CLAUDE_STORAGE){
-      await window.storage.set(key, JSON.stringify(value), false);
-    } else {
-      await idbSet('kv', key, value);
-    }
-  }catch(e){ console.error('storage set failed', e); }
+function saveRememberedLogin(username, password){
+  try{ localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({ username, password })); }catch(e){}
+}
+function clearRememberedLogin(){
+  try{ localStorage.removeItem(REMEMBER_LOGIN_KEY); }catch(e){}
 }
 
-/* ============================= INIT ============================= */
-async function init(){
-  State.properties = await storeGet('property-list', []);
-  State.geoCache = await storeGet('geocode-cache', {});
-  State.activityLog = await storeGet('activity-log', []);
+function bindAuthForm(){
+  const submitBtn = document.getElementById('loginSubmitBtn');
+  const errorBox = document.getElementById('loginError');
+  const form = document.getElementById('loginForm');
+  const rememberCheck = document.getElementById('rememberLoginCheck');
+
+  const remembered = loadRememberedLogin();
+  if(remembered){
+    document.getElementById('loginUsername').value = remembered.username || '';
+    document.getElementById('loginPassword').value = remembered.password || '';
+    rememberCheck.checked = true;
+  }
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    errorBox.style.color = 'var(--red)';
+    errorBox.textContent = '';
+    submitBtn.disabled = true;
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    try{
+      await auth.signInWithEmailAndPassword(usernameToEmail(username.toLowerCase()), password);
+      if(rememberCheck.checked) saveRememberedLogin(username, password);
+      else clearRememberedLogin();
+    }catch(err){
+      errorBox.textContent = friendlyAuthError(err);
+    }
+    submitBtn.disabled = false;
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', ()=> auth.signOut());
+}
+
+function friendlyAuthError(err){
+  const map = {
+    'auth/invalid-email': 'That username looks invalid.',
+    'auth/user-not-found': 'No account with that username.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/invalid-credential': 'Incorrect username or password.',
+    'auth/email-already-in-use': 'That username is already taken.',
+    'auth/weak-password': 'Password must be at least 6 characters.',
+    'auth/too-many-requests': 'Too many attempts — please wait a moment and try again.',
+    'auth/unauthorized-domain': 'This site isn\'t yet authorized in Firebase — add it under Authentication > Settings > Authorized domains.',
+    'auth/requires-recent-login': 'That action needs a fresh sign-in — sign out and back in, then try again.'
+  };
+  return map[err.code] || (err.message || 'Something went wrong — please try again.');
+}
+
+/* ============================= ACCESS MODEL =============================
+   Three kinds of signed-in users, distinguished by the explicit `role`
+   field on their users/{uid} Firestore doc — never inferred from a
+   username or email pattern:
+   - "admin" — full access, including account management for anyone.
+   - "staff" — sees every property list (individually or merged as "All"),
+     the shared Activity Log and Audit Log; can create/remove Trade
+     accounts and reset Trade passwords only.
+   - "trade" — assigned to exactly one of the two fixed regions (R07 or
+     R10), walled off from the other; read-only property list, since only
+     Admin/Staff can add or change properties; no access-management UI.
+   This is enforced for real in Firestore security rules (see the rules
+   block above), not just hidden in the UI.
+*/
+function myRole(){ return userProfile ? userProfile.role : null; }
+function isAdmin(){ return myRole() === 'admin'; }
+function isStaffRole(){ return myRole() === 'staff'; }
+function isStaffOrAdmin(){ return isAdmin() || isStaffRole(); }
+function roleLabel(role){ return role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Trade'; }
+let activeListId = null;  // the property list currently being viewed/edited ('ALL' for staff/admin only)
+
+function sanitizeListId(raw){
+  return (raw || '').toString().trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+}
+
+function updateRoleUI(){
+  const usersBtn = document.getElementById('usersTabBtn');
+  const auditBtn = document.getElementById('auditTabBtn');
+  const show = isStaffOrAdmin();
+  usersBtn.style.display = show ? '' : 'none';
+  auditBtn.style.display = show ? '' : 'none';
+  document.getElementById('usersPanelTitle').textContent = isAdmin() ? 'Users' : 'Trade users';
+  document.getElementById('usersPanelSub').textContent = isAdmin()
+    ? 'Add and manage any account — Admin, Staff or Trade. There\'s no self-signup; every account is created here.'
+    : 'Add and manage Trade accounts for your team. Admin and Staff accounts aren\'t shown here — ask an Admin for those.';
+  document.getElementById('newUserRoleBox').style.display = isAdmin() ? '' : 'none';
+  if(!isAdmin()){
+    document.getElementById('newUserRole').value = 'trade';
+  }
+
+  // Only Admin/Staff can add, upload, or clear properties — Trade accounts
+  // get a read-only, region-locked view of their own list.
+  document.getElementById('uploadDbBtn').style.display = show ? '' : 'none';
+  document.getElementById('clearDbBtn').style.display = show ? '' : 'none';
+  document.getElementById('addRowBtn').style.display = show ? '' : 'none';
+  document.getElementById('dbPanelSub').textContent = show
+    ? 'Each trade region has its own property list; Admin and Staff can view any region, or both merged. Update the active list by uploading an Excel/CSV file, or edit rows directly below.'
+    : 'This is your region\'s property list, kept up to date by Admin and Staff. Trade accounts can search and export it, but only Admin and Staff can add, upload, or remove properties.';
+}
+
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    currentUser = user;
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('userEmailLabel').textContent = '…';
+
+    const userRef = db.collection('users').doc(user.uid);
+    let snap;
+    try{
+      snap = await userRef.get();
+    }catch(e){
+      // Almost always means the doc doesn't exist yet and rules deny the
+      // implicit read used to evaluate isStaffOrAdmin() for someone with
+      // no role doc at all — treat the same as "account removed".
+      snap = null;
+    }
+    if(!snap || !snap.exists){
+      // No matching users/{uid} doc — either a brand-new account that
+      // hasn't been provisioned by an Admin/Staff yet, or one that was
+      // removed. Either way, they can't use the app.
+      toast('This account has no profile — ask an Admin to set it up, or it may have been removed.', 'err');
+      await auth.signOut();
+      return;
+    }
+    userProfile = snap.data();
+
+    // Record this login for the Active/Pending indicator and the audit log.
+    userRef.set({ lastLoginAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(()=>{});
+    addAuditLogEntry({
+      type: 'login', uid: user.uid, username: userProfile.username || '', role: userProfile.role || ''
+    });
+
+    updateRoleUI();
+
+    if(isStaffOrAdmin()){
+      activeListId = userProfile.lastListId || 'ALL';
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)}`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    } else if(!userProfile.listId){
+      document.getElementById('userEmailLabel').textContent = userProfile.username;
+      document.getElementById('mainWrap').classList.add('hidden');
+      await showListAssignOverlay();
+    } else {
+      activeListId = userProfile.listId;
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${regionLabel(activeListId)}`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    }
+  } else {
+    currentUser = null; userProfile = null; activeListId = null;
+    document.getElementById('mainWrap').classList.add('hidden');
+    document.getElementById('listAssignOverlay').classList.add('hidden');
+    document.getElementById('loginOverlay').classList.remove('hidden');
+  }
+});
+
+async function showListAssignOverlay(){
+  const sel = document.getElementById('listAssignSelect');
+  sel.innerHTML = REGIONS.map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(regionLabel(r.id))}</option>`).join('');
+  document.getElementById('listAssignError').textContent = '';
+  document.getElementById('listAssignOverlay').classList.remove('hidden');
+}
+
+/* ============================= FIRESTORE DATA ============================= */
+const PROPERTY_CHUNK_SIZE = 3000; // keeps each Firestore doc well under the 1MB limit
+
+async function loadListIndex(){
+  try{
+    const snap = await db.collection('property_lists').get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>a.id.localeCompare(b.id));
+  }catch(e){ console.error('loadListIndex failed', e); return []; }
+}
+
+async function loadPropertiesForList(listId){
+  if(!listId) return [];
+  try{
+    if(listId === 'ALL'){
+      const index = await loadListIndex();
+      const all = await Promise.all(index.map(l => loadPropertiesForList(l.id)));
+      return all.flat();
+    }
+    const metaSnap = await db.collection('property_lists').doc(listId).get();
+    if(!metaSnap.exists) return [];
+    const n = metaSnap.data().chunkCount || 0;
+    const proms = [];
+    for(let i=0;i<n;i++) proms.push(db.collection('property_lists').doc(listId).collection('chunks').doc('chunk_'+i).get());
+    const snaps = await Promise.all(proms);
+    let rows = [];
+    snaps.forEach(s => { if(s.exists) rows = rows.concat(s.data().rows || []); });
+    return rows;
+  }catch(e){ console.error('loadPropertiesForList failed', e); toast('Could not load that property list: ' + e.message, 'err'); return []; }
+}
+
+async function savePropertiesForList(listId, rows){
+  const chunks = [];
+  for(let i=0;i<rows.length;i+=PROPERTY_CHUNK_SIZE) chunks.push(rows.slice(i, i+PROPERTY_CHUNK_SIZE));
+  const metaRef = db.collection('property_lists').doc(listId);
+  const metaSnap = await metaRef.get();
+  const prevCount = metaSnap.exists ? (metaSnap.data().chunkCount || 0) : 0;
+  const batch = db.batch();
+  const maxIdx = Math.max(prevCount, chunks.length);
+  for(let i=0;i<maxIdx;i++){
+    const ref = metaRef.collection('chunks').doc('chunk_'+i);
+    if(i < chunks.length) batch.set(ref, { rows: chunks[i] });
+    else batch.delete(ref);
+  }
+  batch.set(metaRef, {
+    chunkCount: chunks.length,
+    count: rows.length,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: userProfile ? userProfile.username : null
+  }, { merge: true });
+  await batch.commit();
+}
+
+async function createNewList(listId){
+  const ref = db.collection('property_lists').doc(listId);
+  const snap = await ref.get();
+  if(snap.exists) throw new Error(`List "${listId}" already exists`);
+  await ref.set({
+    chunkCount: 0, count: 0,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: userProfile ? userProfile.username : null
+  });
+}
+
+async function fetchGeocodeFromCloud(code){
+  try{
+    const snap = await db.collection('geocode_cache').doc(code).get();
+    return snap.exists ? snap.data() : null;
+  }catch(e){ console.error('geocode cache read failed', e); return null; }
+}
+async function saveGeocodeToCloud(code, data){
+  try{
+    await db.collection('geocode_cache').doc(code).set({
+      ...data,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: userProfile ? userProfile.username : null
+    });
+  }catch(e){ console.error('geocode cache write failed', e); }
+}
+
+async function loadActivityLog(){
+  if(!isStaffOrAdmin()) return []; // trade users can add entries but can't browse the shared log
+  try{
+    const snap = await db.collection('activity_log').orderBy('ts', 'desc').limit(300).get();
+    return snap.docs.map(d => d.data());
+  }catch(e){ console.error('loadActivityLog failed', e); toast('Could not load the activity log: ' + e.message, 'err'); return []; }
+}
+async function addActivityLogEntry(entry){
+  try{ await db.collection('activity_log').add(entry); }
+  catch(e){ console.error('activity log write failed', e); toast('Saved locally, but could not sync to the shared log: ' + e.message, 'err'); }
+}
+async function clearActivityLogCloud(){
+  const snap = await db.collection('activity_log').get();
+  const batches = [];
+  let batch = db.batch(), n = 0;
+  snap.docs.forEach(d=>{
+    batch.delete(d.ref);
+    n++;
+    if(n === 450){ batches.push(batch.commit()); batch = db.batch(); n = 0; }
+  });
+  if(n > 0) batches.push(batch.commit());
+  await Promise.all(batches);
+}
+
+async function loadAllData(){
+  toast('Loading shared data…');
+  if(isStaffOrAdmin()) await ensureRegionListsExist();
+  const [properties, log] = await Promise.all([ loadPropertiesForList(activeListId), loadActivityLog() ]);
+  State.properties = properties;
+  State.activityLog = log;
+  State.geoCache = {};
   renderDbCount();
   renderDbTable();
   renderLog();
+  renderListSelector();
   await loadAutoSaveDir();
   renderAutoSaveUI();
+  if(isStaffOrAdmin()){
+    await renderUsersTab();
+    State.auditLog = await loadAuditLog();
+    renderAuditLog();
+  }
+}
+
+/* ============================= USER MANAGEMENT (Admin / Staff) =============================
+   Creating a new account works entirely client-side: a second, isolated
+   Firebase App instance signs up the new user (so it never hijacks the
+   admin's own session), then the admin's primary session writes the
+   users/{uid} and usernames/{name} Firestore docs. The chosen plaintext
+   password is only ever kept in the sessionPasswords Map above — never
+   written to Firestore — so "Email login details" only works right after
+   a create or reset, in that same browser tab.
+
+   Resetting an EXISTING account's password to an admin-chosen value is not
+   something the Firebase client SDK can do for anyone other than yourself
+   — see the "ADMIN PASSWORD RESET" note near the top of this file. That
+   path calls an optional Cloud Function; until it's deployed, the button
+   explains why instead of failing silently.
+*/
+function generateRandomPassword(len){
+  len = len || 10;
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, n => chars[n % chars.length]).join('');
+}
+
+async function adminCreateUser({ username, password, role, listId }){
+  const uname = (username || '').trim();
+  const usernameLower = uname.toLowerCase();
+  if(!/^[a-z0-9._-]{3,32}$/.test(usernameLower)){
+    throw new Error('Username must be 3–32 characters: letters, numbers, dot, underscore or hyphen only.');
+  }
+  if(!password || password.length < 6){
+    throw new Error('Password must be at least 6 characters.');
+  }
+  if(!['admin','staff','trade'].includes(role)){
+    throw new Error('Invalid role.');
+  }
+  if(!isAdmin() && role !== 'trade'){
+    throw new Error('Staff can only create Trade accounts.');
+  }
+
+  const nameRef = db.collection('usernames').doc(usernameLower);
+  const nameSnap = await nameRef.get();
+  if(nameSnap.exists){
+    throw new Error(`Username "${uname}" is already taken.`);
+  }
+
+  const secAuth = getSecondaryApp().auth();
+  let cred;
+  try{
+    cred = await secAuth.createUserWithEmailAndPassword(usernameToEmail(usernameLower), password);
+  } finally {
+    try{ await secAuth.signOut(); }catch(e){}
+  }
+  const uid = cred.user.uid;
+
+  await db.collection('users').doc(uid).set({
+    username: uname, usernameLower, role,
+    listId: role === 'trade' ? (listId || null) : null,
+    lastListId: role === 'trade' ? (listId || null) : null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: currentUser ? currentUser.uid : null,
+    createdByUsername: userProfile ? userProfile.username : null,
+    lastLoginAt: null
+  });
+  await nameRef.set({ uid, role });
+
+  sessionPasswords.set(uid, password);
+  return { uid, username: uname };
+}
+
+async function resetUserPassword(uid, username){
+  const newPassword = generateRandomPassword();
+  try{
+    const callable = firebase.app().functions().httpsCallable('adminResetPassword');
+    await callable({ uid, newPassword });
+  }catch(e){
+    console.error('adminResetPassword failed', e);
+    toast('Password reset needs the optional Cloud Function deployed first — see the "ADMIN PASSWORD RESET" note near the top of this file (functions/index.js).', 'err');
+    return;
+  }
+  sessionPasswords.set(uid, newPassword);
+  openEmailTemplate(username, newPassword);
+  toast(`Password reset for "${username}"`, 'ok');
+  await renderUsersTab();
+}
+
+async function removeUser(uid, usernameLower, username, role){
+  if(!confirm(`Remove account "${username}" (${roleLabel(role)})? They will no longer be able to sign in or access any data.`)) return;
+  try{
+    await db.collection('users').doc(uid).delete();
+    if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
+    sessionPasswords.delete(uid);
+    try{
+      await firebase.app().functions().httpsCallable('adminDeleteAuthUser')({ uid });
+    }catch(e){
+      // Optional — without the Cloud Function the Auth record survives as
+      // a harmless orphan (no Firestore role doc = no app access under the
+      // security rules) until it's deployed or cleaned up in the console.
+    }
+    toast(`Removed "${username}"`, 'ok');
+    await renderUsersTab();
+  }catch(e){
+    toast('Could not remove that account: ' + e.message, 'err');
+  }
+}
+
+function openEmailTemplate(username, password){
+  const box = document.getElementById('emailTemplateBox');
+  const body = document.getElementById('emailTemplateBody');
+  body.value = `Hi ${username},\n\nHere are your Field GeoTag Kit login details:\n\nUsername: ${username}\nPassword: ${password}\n\nSign in at: [add your GitHub Pages link here]\n\nPlease keep this somewhere safe.`;
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('openMailBtn').onclick = (e)=>{
+    e.preventDefault();
+    const subject = encodeURIComponent('Your Field GeoTag Kit login');
+    window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(body.value)}`;
+  };
+}
+
+async function loadUsersList(){
+  try{
+    let snap;
+    if(isAdmin()) snap = await db.collection('users').orderBy('username').get();
+    else snap = await db.collection('users').where('role', '==', 'trade').get();
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  }catch(e){
+    console.error('loadUsersList failed', e);
+    toast('Could not load users: ' + e.message, 'err');
+    return [];
+  }
+}
+
+async function renderUsersTab(){
+  const listSel = document.getElementById('newUserList');
+  listSel.innerHTML = '<option value="">— unassigned (choose on first login) —</option>' +
+    REGIONS.map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(regionLabel(r.id))}</option>`).join('');
+
+  const users = await loadUsersList();
+  document.getElementById('usersCount').textContent = users.length;
+  document.getElementById('usersCount2').textContent = users.length;
+
+  const body = document.getElementById('usersTableBody');
+  if(!users.length){
+    body.innerHTML = '<tr><td colspan="5"><div class="empty-state">No accounts yet — add one above.</div></td></tr>';
+    return;
+  }
+  body.innerHTML = users.map(u => {
+    const canManage = isAdmin() || u.role === 'trade';
+    const isSelf = currentUser && u.uid === currentUser.uid;
+    const active = !!u.lastLoginAt;
+    const hasPw = sessionPasswords.has(u.uid);
+    return `
+    <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
+      <td>${escapeHtml(u.username || '—')}</td>
+      <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
+      <td>${escapeHtml(u.role === 'trade' ? (u.listId ? REGIONS.find(r=>r.id===u.listId)?.label || u.listId : '—') : '')}</td>
+      <td><span class="status-pill ${active?'active':'pending'}"><span class="dot"></span>${active?'Active':'Pending'}</span></td>
+      <td>
+        <div class="user-actions">
+          ${canManage ? `<button class="btn small ghost" data-act="reset">Reset password</button>` : ''}
+          ${hasPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
+          ${canManage && !isSelf ? `<button class="btn small ghost danger" data-act="remove">Remove</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      resetUserPassword(tr.dataset.uid, tr.dataset.username);
+    });
+  });
+  body.querySelectorAll('[data-act="email"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      openEmailTemplate(tr.dataset.username, sessionPasswords.get(tr.dataset.uid));
+    });
+  });
+  body.querySelectorAll('[data-act="remove"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      removeUser(tr.dataset.uid, tr.dataset.namelower, tr.dataset.username, tr.dataset.role);
+    });
+  });
+}
+
+function bindUsersTab(){
+  document.getElementById('addUserBtn').addEventListener('click', ()=>{
+    document.getElementById('addUserBox').style.display = 'block';
+    document.getElementById('emailTemplateBox').style.display = 'none';
+    document.getElementById('addUserError').textContent = '';
+    document.getElementById('newUserUsername').value = '';
+    document.getElementById('newUserPassword').value = '';
+    document.getElementById('newUserListBox').style.display = (isAdmin() ? document.getElementById('newUserRole').value : 'trade') === 'trade' ? '' : 'none';
+  });
+  document.getElementById('cancelAddUserBtn').addEventListener('click', ()=>{
+    document.getElementById('addUserBox').style.display = 'none';
+  });
+  document.getElementById('genPasswordBtn').addEventListener('click', ()=>{
+    document.getElementById('newUserPassword').value = generateRandomPassword();
+  });
+  document.getElementById('newUserRole').addEventListener('change', (e)=>{
+    document.getElementById('newUserListBox').style.display = e.target.value === 'trade' ? '' : 'none';
+  });
+  document.getElementById('createUserBtn').addEventListener('click', async ()=>{
+    const errBox = document.getElementById('addUserError');
+    errBox.textContent = '';
+    const username = document.getElementById('newUserUsername').value;
+    const password = document.getElementById('newUserPassword').value;
+    const role = isAdmin() ? document.getElementById('newUserRole').value : 'trade';
+    const listId = document.getElementById('newUserList').value;
+    const btn = document.getElementById('createUserBtn');
+    btn.disabled = true;
+    try{
+      const { username: uname } = await adminCreateUser({ username, password, role, listId });
+      document.getElementById('addUserBox').style.display = 'none';
+      openEmailTemplate(uname, password);
+      toast(`Account "${uname}" created`, 'ok');
+      await renderUsersTab();
+    }catch(err){
+      errBox.textContent = err.code ? friendlyAuthError(err) : (err.message || 'Could not create that account.');
+    }
+    btn.disabled = false;
+  });
+  document.getElementById('closeEmailTemplateBtn').addEventListener('click', ()=>{
+    document.getElementById('emailTemplateBox').style.display = 'none';
+  });
+}
+
+/* ============================= AUDIT LOG (Admin / Staff) =============================
+   Separate from the batch-level Activity Log above: every login, and every
+   photo geotagged (one entry per image — work order, property, lat/lon,
+   filename and file type). Firestore's TTL policy on audit_log.expiresAt
+   (set up in step 7 of the Firebase setup notes) auto-deletes entries
+   after AUDIT_LOG_RETENTION_DAYS, so there's no client-side cleanup code.
+*/
+function auditExpiryDate(){
+  const d = new Date();
+  d.setDate(d.getDate() + AUDIT_LOG_RETENTION_DAYS);
+  return d;
+}
+async function addAuditLogEntry(entry){
+  try{
+    await db.collection('audit_log').add({
+      ...entry,
+      ts: firebase.firestore.FieldValue.serverTimestamp(),
+      tsClient: new Date().toISOString(),
+      expiresAt: auditExpiryDate()
+    });
+  }catch(e){ console.error('audit log write failed', e); }
+}
+async function loadAuditLog(){
+  if(!isStaffOrAdmin()) return [];
+  try{
+    const snap = await db.collection('audit_log').orderBy('ts', 'desc').limit(1000).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }catch(e){
+    console.error('loadAuditLog failed', e);
+    toast('Could not load the audit log: ' + e.message, 'err');
+    return [];
+  }
+}
+function auditEntryDate(e){ return e.ts && e.ts.toDate ? e.ts.toDate() : new Date(e.tsClient || Date.now()); }
+function dateRangeSlug(){
+  if(!State.auditLog.length) return new Date().toISOString().slice(0,10);
+  const dates = State.auditLog.map(auditEntryDate);
+  const fmt = d => d.toISOString().slice(0,10);
+  return `${fmt(new Date(Math.min(...dates)))}_to_${fmt(new Date(Math.max(...dates)))}`;
+}
+function fmtAuditEntry(e){
+  const ts = auditEntryDate(e).toLocaleString();
+  if(e.type === 'login'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind login">Login</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} · ${roleLabel(e.role)}</div>
+    </div>`;
+  }
+  return `<div class="audit-item">
+    <div class="top-row"><span class="kind geotag">Geotag</span><span class="ts">${ts}</span></div>
+    <div class="detail">${escapeHtml(e.username||'unknown')} · ${escapeHtml(e.wo||'')} — ${escapeHtml(e.propertyId||'')} · ${e.lat!=null?e.lat.toFixed(6):''}, ${e.lon!=null?e.lon.toFixed(6):''} · ${escapeHtml(e.filename||'')} (${escapeHtml((e.fileType||'').toUpperCase())}) · ${escapeHtml(e.listId||'—')}</div>
+  </div>`;
+}
+function renderAuditLog(){
+  document.getElementById('auditCount2').textContent = State.auditLog.length;
+  const list = document.getElementById('auditList');
+  const rangeEl = document.getElementById('auditRange');
+  if(!State.auditLog.length){
+    list.innerHTML = '<div class="empty-state">No audit entries yet — logins and geotagging actions will appear here, kept for 30 days.</div>';
+    rangeEl.textContent = '';
+    return;
+  }
+  const dates = State.auditLog.map(auditEntryDate);
+  rangeEl.textContent = `${new Date(Math.min(...dates)).toLocaleDateString()} – ${new Date(Math.max(...dates)).toLocaleDateString()}`;
+  list.innerHTML = State.auditLog.map(fmtAuditEntry).join('');
+}
+function auditRowsForExport(){
+  return State.auditLog.map(e => ({
+    'Type': e.type, 'Timestamp': auditEntryDate(e).toISOString(),
+    'Username': e.username||'', 'Role': e.role||'', 'Work Order': e.wo||'', 'Property ID': e.propertyId||'',
+    'Address': e.address||'', 'Latitude': e.lat!=null?e.lat:'', 'Longitude': e.lon!=null?e.lon:'',
+    'Filename': e.filename||'', 'File Type': e.fileType||'', 'List': e.listId||''
+  }));
+}
+function bindAuditTab(){
+  document.getElementById('refreshAuditBtn').addEventListener('click', async ()=>{
+    State.auditLog = await loadAuditLog();
+    renderAuditLog();
+    toast('Audit log refreshed', 'ok');
+  });
+  document.getElementById('exportAuditCsvBtn').addEventListener('click', ()=>{
+    const csv = Papa.unparse(auditRowsForExport());
+    downloadText(csv, `audit-log_${dateRangeSlug()}.csv`, 'text/csv');
+  });
+  document.getElementById('exportAuditZipBtn').addEventListener('click', async ()=>{
+    const csv = Papa.unparse(auditRowsForExport());
+    const slug = dateRangeSlug();
+    const zip = new JSZip();
+    zip.file(`audit-log_${slug}.csv`, csv);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    await saveBlob(blob, `audit-log_${slug}.zip`);
+  });
+}
+
+/* ============================= INIT ============================= */
+function init(){
+  bindAuthForm();
   bindEvents();
+  document.getElementById('listAssignConfirmBtn').addEventListener('click', async ()=>{
+    const sel = document.getElementById('listAssignSelect');
+    const listId = sel.value;
+    const errBox = document.getElementById('listAssignError');
+    if(!listId){ errBox.textContent = 'No list available to select yet.'; return; }
+    try{
+      await db.collection('users').doc(currentUser.uid).set({ listId }, { merge: true });
+      userProfile.listId = listId;
+      activeListId = listId;
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${regionLabel(activeListId)}`;
+      document.getElementById('listAssignOverlay').classList.add('hidden');
+      document.getElementById('mainWrap').classList.remove('hidden');
+      await loadAllData();
+    }catch(err){
+      errBox.textContent = err.message || 'Could not save your selection — try again.';
+    }
+  });
 }
 
 function toast(msg, type){
@@ -597,10 +1611,11 @@ async function selectProperty(p){
   updateStamp('Looking up coordinates…');
   document.getElementById('geoStatus').textContent = '';
 
-  const cached = State.geoCache[p.code];
+  const cached = State.geoCache[p.code] || await fetchGeocodeFromCloud(p.code);
   if(cached && cached.lat != null){
+    State.geoCache[p.code] = cached;
     fillCoords(cached.lat, cached.lon);
-    document.getElementById('geoStatus').textContent = 'From cache';
+    document.getElementById('geoStatus').textContent = 'From shared cache';
   } else {
     await geocodeCurrent();
   }
@@ -707,7 +1722,7 @@ async function geocodeCurrent(){
   if(found){
     const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
     State.geoCache[p.code] = { lat, lon, source:'nominatim', query: usedVariant };
-    await storeSet('geocode-cache', State.geoCache);
+    await saveGeocodeToCloud(p.code, State.geoCache[p.code]);
     fillCoords(lat.toFixed(6), lon.toFixed(6));
     document.getElementById('geoStatus').textContent = (usedVariant === rawAddress.trim())
       ? 'Located via OpenStreetMap'
@@ -721,7 +1736,14 @@ async function geocodeCurrent(){
   updateProcessBtn();
 }
 
-/* ============================= IMAGE INTAKE ============================= */
+/* ============================= IMAGE INTAKE =============================
+   Privacy: photos never leave the browser except to the folder or ZIP the
+   user explicitly chooses to save to. They are never uploaded to Firebase,
+   Firestore, or any other server — only their filename, file type, and the
+   coordinates written into them are recorded (in the audit log, as text).
+   Thumbnails live only in this tab's memory via short-lived object URLs,
+   which are revoked (and the images dropped) as soon as a batch is
+   successfully processed — see the end of processAndExport() below. */
 function bindImageIntake(){
   const dz = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
@@ -856,16 +1878,19 @@ function renderThumbs(){
 
 /* ============================= AUTO-SAVE FOLDER ============================= */
 const HAS_DIR_PICKER = typeof window.showDirectoryPicker === 'function';
+function folderHandleKey(){ return 'auto-save-dir:' + (currentUser ? currentUser.uid : 'anon'); }
 
 async function loadAutoSaveDir(){
-  if(HAS_CLAUDE_STORAGE || !HAS_DIR_PICKER) return; // handles can't be stored via window.storage (JSON-only)
+  autoSaveDirHandle = null;
+  State.autoSaveDirName = null;
+  if(!HAS_DIR_PICKER) return;
   try{
-    const handle = await idbGet('handles', 'auto-save-dir');
+    const handle = await idbGet('handles', folderHandleKey());
     if(handle){
       autoSaveDirHandle = handle;
       State.autoSaveDirName = handle.name;
     }
-  }catch(e){ /* no stored handle yet */ }
+  }catch(e){ /* no stored handle yet for this user on this device */ }
 }
 
 function renderAutoSaveUI(){
@@ -880,11 +1905,11 @@ function renderAutoSaveUI(){
   }
   if(autoSaveDirHandle){
     row.classList.remove('required');
-    status.innerHTML = `Saving to <b style="color:var(--text)">${escapeHtml(State.autoSaveDirName)}</b> → a subfolder per job (work order + property ID)`;
+    status.innerHTML = `Saving to <b style="color:var(--text)">${escapeHtml(State.autoSaveDirName)}</b> on this device → a subfolder per job (work order + property ID)`;
     clearBtn.style.display = 'inline-flex';
   } else {
     row.classList.add('required');
-    status.textContent = 'Not selected — choose a folder to enable "save to folder". Until then, only "Download ZIP" is available.';
+    status.textContent = 'Not selected on this device — choose a folder to enable "save to folder". Until then, only "Download ZIP" is available.';
     clearBtn.style.display = 'none';
   }
   updateProcessBtn();
@@ -892,12 +1917,14 @@ function renderAutoSaveUI(){
 
 // Explicit manual pick — whatever the user chooses becomes the root as-is.
 // A folder must be chosen here before "save to folder" is usable at all.
+// This is remembered per signed-in user, per device (browser permissions
+// for real folders can't be synced across machines).
 async function chooseAutoSaveFolder(){
   try{
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     autoSaveDirHandle = handle;
     State.autoSaveDirName = handle.name;
-    if(!HAS_CLAUDE_STORAGE){ await idbSet('handles', 'auto-save-dir', handle); }
+    await idbSet('handles', folderHandleKey(), handle);
     renderAutoSaveUI();
     toast('Auto-save folder set to "' + handle.name + '"', 'ok');
   }catch(e){
@@ -908,7 +1935,7 @@ async function chooseAutoSaveFolder(){
 async function clearAutoSaveFolder(){
   autoSaveDirHandle = null;
   State.autoSaveDirName = null;
-  if(!HAS_CLAUDE_STORAGE){ try{ await idbDelete('handles', 'auto-save-dir'); }catch(e){} }
+  try{ await idbDelete('handles', folderHandleKey()); }catch(e){}
   renderAutoSaveUI();
 }
 
@@ -1091,15 +2118,45 @@ async function processAndExport(mode){
   rb.classList.add('show');
   document.getElementById('resultText').textContent = resultMsg;
 
-  State.activityLog.unshift({
+  const logEntry = {
     ts: new Date().toISOString(),
     wo, propertyId: prop.code, address: prop.address,
     lat, lon, count: selected.length,
-    files: selected.map(i=>i.name)
-  });
+    files: selected.map(i=>i.name),
+    userEmail: userProfile ? userProfile.username : 'unknown',
+    listId: activeListId || null
+  };
+  State.activityLog.unshift(logEntry);
   if(State.activityLog.length > 300) State.activityLog.length = 300;
-  await storeSet('activity-log', State.activityLog);
+  await addActivityLogEntry(logEntry);
   renderLog();
+
+  // Detailed audit trail — one entry per image, not per batch, as required
+  // for the 30-day rolling audit log (separate from the batch-level
+  // Activity Log above).
+  selected.forEach(img => {
+    addAuditLogEntry({
+      type: 'geotag',
+      uid: currentUser ? currentUser.uid : null,
+      username: userProfile ? userProfile.username : 'unknown',
+      wo, propertyId: prop.code, address: prop.address,
+      lat, lon,
+      filename: img.name,
+      fileType: img.type || (img.name.split('.').pop() || '').toLowerCase(),
+      listId: activeListId || null
+    });
+  });
+
+  // Privacy: once a batch of photos has been geotagged and exported, we
+  // don't keep them in memory any longer than needed — their object URLs
+  // are revoked and they're dropped from the thumbnail grid. (Photos were
+  // never uploaded to Firebase or any other server in the first place —
+  // this just clears the local browser copy too. Any photos you hadn't
+  // selected for this batch are left untouched.)
+  selected.forEach(img => URL.revokeObjectURL(img.url));
+  State.images = State.images.filter(im => !im.selected);
+  renderThumbs();
+  if(!State.images.length) document.getElementById('thumbArea').style.display = 'none';
 
   btn.disabled = false;
   if(folderBtn) folderBtn.disabled = false;
@@ -1136,6 +2193,8 @@ function renderDbCount(){
   document.getElementById('dbCount2').textContent = State.properties.length;
 }
 let dbFilter = '';
+function canEditActiveList(){ return isStaffOrAdmin() && !!activeListId && activeListId !== 'ALL'; }
+
 function renderDbTable(){
   const body = document.getElementById('dbTableBody');
   const rows = State.properties
@@ -1146,18 +2205,20 @@ function renderDbTable(){
     body.innerHTML = `<tr><td colspan="3"><div class="empty-state">${State.properties.length ? 'No matches for that filter.' : 'No properties yet — upload an Excel/CSV or add rows manually.'}</div></td></tr>`;
     return;
   }
+  const editable = canEditActiveList();
   body.innerHTML = rows.map(p => `
     <tr data-i="${p._i}">
-      <td class="code"><input type="text" value="${escapeAttr(p.code)}" data-f="code"></td>
-      <td><input type="text" value="${escapeAttr(p.address)}" data-f="address"></td>
-      <td><button class="btn small danger ghost" data-act="del" style="padding:4px 8px;">✕</button></td>
+      <td class="code"><input type="text" value="${escapeAttr(p.code)}" data-f="code" ${editable?'':'disabled'}></td>
+      <td><input type="text" value="${escapeAttr(p.address)}" data-f="address" ${editable?'':'disabled'}></td>
+      <td>${editable ? '<button class="btn small danger ghost" data-act="del" style="padding:4px 8px;">✕</button>' : ''}</td>
     </tr>`).join('');
+  if(!editable) return;
   body.querySelectorAll('input').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const tr = inp.closest('tr');
       const i = +tr.dataset.i;
       State.properties[i][inp.dataset.f] = inp.value;
-      await storeSet('property-list', State.properties);
+      await savePropertiesForList(activeListId, State.properties);
     });
   });
   body.querySelectorAll('[data-act="del"]').forEach(btn=>{
@@ -1165,36 +2226,71 @@ function renderDbTable(){
       const tr = btn.closest('tr');
       const i = +tr.dataset.i;
       State.properties.splice(i,1);
-      await storeSet('property-list', State.properties);
+      await savePropertiesForList(activeListId, State.properties);
       renderDbCount();
       renderDbTable();
     });
   });
 }
 
+/* ---- property list selector (staff: switch/create; trade: fixed label) ---- */
+async function renderListSelector(){
+  const box = document.getElementById('listSelectorBox');
+  if(isStaffOrAdmin()){
+    const options = REGIONS.map(r => `<option value="${escapeAttr(r.id)}" ${r.id===activeListId?'selected':''}>${escapeHtml(regionLabel(r.id))}</option>`).join('');
+    box.innerHTML = `
+      <label class="field-label" style="margin:0;">Region</label>
+      <select id="listSelect" class="mono-input" style="width:auto; display:inline-block;">
+        <option value="ALL" ${activeListId==='ALL'?'selected':''}>Both regions (merged)</option>
+        ${options}
+      </select>
+    `;
+    document.getElementById('listSelect').addEventListener('change', async (e)=>{
+      activeListId = e.target.value;
+      await db.collection('users').doc(currentUser.uid).set({ lastListId: activeListId }, { merge: true });
+      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${activeListId === 'ALL' ? 'Both regions' : activeListId} · ${roleLabel(userProfile.role)}`;
+      State.properties = await loadPropertiesForList(activeListId);
+      dbFilter = ''; document.getElementById('dbSearch').value = '';
+      renderDbCount(); renderDbTable(); renderListSelector();
+    });
+  } else {
+    box.innerHTML = `<label class="field-label" style="margin:0;">Region</label> <span class="mono-input" style="display:inline-block; padding:8px 12px;">${escapeHtml(regionLabel(activeListId))}</span>`;
+  }
+}
+
 function bindDbTab(){
+  document.getElementById('refreshDbBtn').addEventListener('click', async ()=>{
+    State.properties = await loadPropertiesForList(activeListId);
+    renderDbCount(); renderDbTable();
+    toast('Property database refreshed', 'ok');
+  });
   document.getElementById('dbSearch').addEventListener('input', (e)=>{
     dbFilter = e.target.value.trim().toLowerCase();
     renderDbTable();
   });
   document.getElementById('addRowBtn').addEventListener('click', async ()=>{
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") to make changes', 'err'); return; }
     State.properties.unshift({code:'', address:''});
-    await storeSet('property-list', State.properties);
+    await savePropertiesForList(activeListId, State.properties);
     renderDbCount(); renderDbTable();
     document.getElementById('dbSearch').value=''; dbFilter='';
   });
   document.getElementById('clearDbBtn').addEventListener('click', async ()=>{
-    if(!confirm('Remove all properties from the database?')) return;
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") to make changes', 'err'); return; }
+    if(!confirm(`Remove all properties from "${activeListId}"? This affects everyone assigned to that list.`)) return;
     State.properties = [];
-    await storeSet('property-list', State.properties);
+    await savePropertiesForList(activeListId, State.properties);
     renderDbCount(); renderDbTable();
   });
   document.getElementById('exportDbBtn').addEventListener('click', ()=>{
     const csv = Papa.unparse(State.properties.map(p=>({'Property ID': p.code, 'Address': p.address})));
-    downloadText(csv, 'property-list.csv', 'text/csv');
+    downloadText(csv, `property-list-${activeListId||'export'}.csv`, 'text/csv');
   });
 
-  document.getElementById('uploadDbBtn').addEventListener('click', ()=> document.getElementById('dbFileInput').click());
+  document.getElementById('uploadDbBtn').addEventListener('click', ()=>{
+    if(!canEditActiveList()){ toast('Select a specific list (not "All lists") before uploading', 'err'); return; }
+    document.getElementById('dbFileInput').click();
+  });
   document.getElementById('dbFileInput').addEventListener('change', async (e)=>{
     const file = e.target.files[0];
     e.target.value = '';
@@ -1203,7 +2299,7 @@ function bindDbTab(){
       const rows = await parsePropertyFile(file);
       if(!rows.length){ toast('No usable rows found in that file', 'err'); return; }
       State.uploadParsed = rows;
-      document.getElementById('uploadPreview').textContent = `${rows.length} rows parsed. Example: ${rows[0].code} — ${rows[0].address}`;
+      document.getElementById('uploadPreview').textContent = `${rows.length} rows parsed for list "${activeListId}". Example: ${rows[0].code} — ${rows[0].address}`;
       document.getElementById('uploadModeBox').style.display = 'block';
     }catch(err){
       toast('Could not parse that file: ' + err.message, 'err');
@@ -1214,7 +2310,7 @@ function bindDbTab(){
     document.getElementById('uploadModeBox').style.display = 'none';
   });
   document.getElementById('confirmUploadBtn').addEventListener('click', async ()=>{
-    if(!State.uploadParsed) return;
+    if(!State.uploadParsed || !canEditActiveList()) return;
     const mode = document.querySelector('input[name=uploadMode]:checked').value;
     if(mode === 'replace'){
       State.properties = State.uploadParsed;
@@ -1223,11 +2319,11 @@ function bindDbTab(){
       State.uploadParsed.forEach(p => map.set(p.code, p));
       State.properties = [...map.values()];
     }
-    await storeSet('property-list', State.properties);
+    await savePropertiesForList(activeListId, State.properties);
     State.uploadParsed = null;
     document.getElementById('uploadModeBox').style.display = 'none';
-    renderDbCount(); renderDbTable();
-    toast('Property database updated', 'ok');
+    renderDbCount(); renderDbTable(); renderListSelector();
+    toast(`Property list "${activeListId}" updated`, 'ok');
   });
 }
 
@@ -1280,6 +2376,13 @@ function renderLog(){
   document.getElementById('logCount').textContent = State.activityLog.length;
   document.getElementById('logCount2').textContent = State.activityLog.length;
   const list = document.getElementById('logList');
+  const controls = document.getElementById('logControls');
+  if(!isStaffOrAdmin()){
+    if(controls) controls.style.display = 'none';
+    list.innerHTML = '<div class="empty-state">The shared activity log is visible to Admin and Staff only. Your completed jobs are still recorded — you just can\'t browse everyone\'s here.</div>';
+    return;
+  }
+  if(controls) controls.style.display = '';
   if(!State.activityLog.length){
     list.innerHTML = '<div class="empty-state">No activity yet. Processed batches will appear here.</div>';
     return;
@@ -1291,22 +2394,31 @@ function renderLog(){
         <span class="ts">${new Date(e.ts).toLocaleString()}</span>
       </div>
       <div class="addr">${escapeHtml(e.address)}</div>
-      <div class="meta">${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} · ${e.count} photo${e.count>1?'s':''}</div>
+      <div class="meta">${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} · ${e.count} photo${e.count>1?'s':''} · ${escapeHtml(e.userEmail || 'unknown')} · ${escapeHtml(e.listId || '—')}</div>
     </div>`).join('');
 }
 function bindLogTab(){
+  document.getElementById('refreshLogBtn').addEventListener('click', async ()=>{
+    State.activityLog = await loadActivityLog();
+    renderLog();
+  });
   document.getElementById('exportLogBtn').addEventListener('click', ()=>{
     const csv = Papa.unparse(State.activityLog.map(e=>({
       'Timestamp': e.ts, 'Work Order': e.wo, 'Property ID': e.propertyId, 'Address': e.address,
-      'Latitude': e.lat, 'Longitude': e.lon, 'Photo Count': e.count, 'Files': e.files.join('; ')
+      'Latitude': e.lat, 'Longitude': e.lon, 'Photo Count': e.count, 'Processed By': e.userEmail || '', 'Files': e.files.join('; ')
     })));
     downloadText(csv, 'activity-log.csv', 'text/csv');
   });
   document.getElementById('clearLogBtn').addEventListener('click', async ()=>{
-    if(!confirm('Clear the activity log?')) return;
-    State.activityLog = [];
-    await storeSet('activity-log', State.activityLog);
-    renderLog();
+    if(!confirm('Clear the activity log for everyone? This deletes it from the shared record, not just your view.')) return;
+    try{
+      await clearActivityLogCloud();
+      State.activityLog = [];
+      renderLog();
+      toast('Activity log cleared', 'ok');
+    }catch(e){
+      toast('Could not clear the log: ' + e.message, 'err');
+    }
   });
 }
 
@@ -1321,6 +2433,8 @@ function bindEvents(){
   bindImageIntake();
   bindDbTab();
   bindLogTab();
+  bindUsersTab();
+  bindAuditTab();
 
   document.getElementById('woNumber').addEventListener('input', updateProcessBtn);
   document.getElementById('latField').addEventListener('input', ()=>{ updateStamp(); updateProcessBtn(); });
