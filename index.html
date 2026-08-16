@@ -133,9 +133,6 @@
   .reveal-password{display:inline-flex; align-items:center; gap:8px;}
   .reveal-password button{background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; font-family:var(--sans);}
   .reveal-password button:hover{color:var(--amber); border-color:var(--amber-dim);}
-  .video-embed-wrap{position:relative; width:100%; padding-top:56.25%; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:8px; overflow:hidden;}
-  .video-embed-wrap iframe{position:absolute; inset:0; width:100%; height:100%; border:0; display:none;}
-  .video-embed-placeholder{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--text-faint); font-size:13px; line-height:1.6;}
   .support-step{display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--border-soft);}
   .support-step:last-child{border-bottom:none;}
   .support-step .num{flex-shrink:0; width:28px; height:28px; border-radius:50%; background:var(--bg-inset); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:12px; color:var(--amber);}
@@ -730,6 +727,54 @@
             </div>
           </div>
 
+          <div id="editUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+            <div class="panel-sub" style="margin:0 0 12px;">Editing <strong id="editUserUsernameLabel" style="color:var(--text);"></strong></div>
+            <div class="row" id="editUserNameFieldsBox">
+              <div>
+                <label class="field-label" id="editUserFirstNameLabel">First name</label>
+                <input type="text" id="editUserFirstName" class="mono-input" placeholder="e.g. Jordan">
+              </div>
+              <div>
+                <label class="field-label" id="editUserLastNameLabel">Last name</label>
+                <input type="text" id="editUserLastName" class="mono-input" placeholder="e.g. Smith">
+              </div>
+            </div>
+            <div class="row" id="editUserTradeFieldsBox" style="margin-top:12px;">
+              <div>
+                <label class="field-label">Company <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(required for Trade)</span></label>
+                <select id="editUserCompanySelect" class="mono-input" style="width:100%;">
+                  <option value="__NEW__">+ New company…</option>
+                </select>
+                <input type="text" id="editUserCompany" class="mono-input" placeholder="e.g. Smith Roofing Ltd" style="margin-top:6px;">
+              </div>
+              <div>
+                <label class="field-label">Mobile <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+                <input type="text" id="editUserMobile" class="mono-input" placeholder="e.g. 021 234 5678">
+              </div>
+            </div>
+            <div class="row" id="editUserEmailRow" style="margin-top:12px;">
+              <div>
+                <label class="field-label">Email address <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+                <input type="email" id="editUserEmail" class="mono-input" placeholder="e.g. name@company.co.nz">
+              </div>
+              <div id="editUserCompanyAdminBox" style="display:flex; align-items:flex-end; gap:8px; padding-bottom:9px;">
+                <input type="checkbox" id="editUserCompanyAdmin" style="width:auto;">
+                <label for="editUserCompanyAdmin" style="font-size:12.5px; color:var(--text-dim); cursor:pointer;">This is the company's admin account (emails address the company by name, not a first name)</label>
+              </div>
+            </div>
+            <div class="row" id="editUserRegionRow" style="margin-top:12px;">
+              <div id="editUserRegionBox">
+                <label class="field-label">Region</label>
+                <select id="editUserRegion" class="mono-input" style="width:100%;"></select>
+              </div>
+            </div>
+            <div style="margin-top:14px; display:flex; gap:10px;">
+              <button class="btn small primary" id="saveEditUserBtn">Save changes</button>
+              <button class="btn small ghost" id="cancelEditUserBtn">Cancel</button>
+            </div>
+            <div class="login-error" id="editUserError"></div>
+          </div>
+
           <div class="db-scroll" style="max-height:none;">
             <table class="db-table">
               <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:230px"></th></tr></thead>
@@ -807,16 +852,6 @@
       <div class="panel-head"><span class="eyebrow">HELP</span><h2>Support &amp; how-to</h2></div>
       <div class="panel-sub">A walkthrough of everything you can do in Field GeoTag Kit. For login problems or anything account-related, contact your Switched On Housing representative — passwords are only ever reset by an Admin or Staff account.</div>
 
-      <div style="margin-bottom:20px;">
-        <div class="video-embed-wrap">
-          <iframe id="supportVideoFrame" src="" title="Field GeoTag Kit walkthrough" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-          <div id="supportVideoPlaceholder" class="video-embed-placeholder">
-            No walkthrough video has been added yet — an Admin can set one by editing the <code>SUPPORT_VIDEO_URL</code>
-            constant near the top of this file's &lt;script&gt; (a YouTube "embed" URL works well, including full-screen).
-          </div>
-        </div>
-      </div>
-
       <div id="supportSteps"></div>
     </div>
   </div>
@@ -851,11 +886,6 @@ const FIREBASE_CONFIG = {
 };
 const USERNAME_EMAIL_DOMAIN = 'fieldgeotag.internal'; // fake domain used to key Firebase Auth off usernames instead of real emails
 const AUDIT_LOG_RETENTION_DAYS = 30;
-// Set this to a video "embed" URL (e.g. a YouTube link in the form
-// https://www.youtube.com/embed/VIDEO_ID) to show a walkthrough video on
-// the Trade Support tab, full-screen button included. Leave blank to show
-// a placeholder note instead.
-const SUPPORT_VIDEO_URL = '';
 
 // The two fixed trade regions. Trade accounts belong to exactly one and
 // are walled off from the other's data — both in the UI and for real in
@@ -1218,19 +1248,19 @@ async function showListAssignOverlay(){
 /* ============================= FIRESTORE DATA ============================= */
 const PROPERTY_CHUNK_SIZE = 3000; // keeps each Firestore doc well under the 1MB limit
 
-async function loadListIndex(){
-  try{
-    const snap = await db.collection('property_lists').get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>a.id.localeCompare(b.id));
-  }catch(e){ console.error('loadListIndex failed', e); return []; }
-}
-
 async function loadPropertiesForList(listId){
   if(!listId) return [];
   try{
     if(listId === 'ALL'){
-      const index = await loadListIndex();
-      const all = await Promise.all(index.map(l => loadPropertiesForList(l.id)));
+      // Merge each region's list directly, one scoped single-document read
+      // at a time — never a collection-level query here. The Firestore rule
+      // is scoped per-list (inMyRegion), and a blanket "list everything in
+      // property_lists" query needs every possible result to pass or the
+      // whole query is denied — which broke this for exactly the accounts
+      // ("All Regions" Trade/Staff) it needs to work for, even though they
+      // do have access to each of their own regions individually.
+      const listsToLoad = (!isAdmin() && userProfile) ? myRegions() : ALL_REGION_IDS.slice();
+      const all = await Promise.all(listsToLoad.map(id => loadPropertiesForList(id)));
       return all.flat();
     }
     const metaSnap = await db.collection('property_lists').doc(listId).get();
@@ -1462,6 +1492,84 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
   return { uid, username: uname };
 }
 
+// Edits an existing account's profile details — name, company/contact
+// info, and region assignment. Deliberately does NOT touch username,
+// password, or role: username is tied to the Firebase Auth record,
+// password has its own Reset flow, and role changes ripple into so many
+// other fields (company, regions, required-name rules) that it's safer
+// to remove and re-create the account for that. Firestore rules mirror
+// the same boundary this checks client-side: Admin can edit anyone,
+// Staff can only edit Trade accounts within their own region(s).
+async function adminUpdateUser(target, { firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick }){
+  const role = target.role;
+  if(!isAdmin() && role !== 'trade'){
+    throw new Error('Staff can only edit Trade accounts.');
+  }
+  if((role === 'admin' || role === 'staff') && !(firstName || '').trim()){
+    throw new Error('First name is required for Admin and Staff accounts.');
+  }
+  if((role === 'admin' || role === 'staff') && !(lastName || '').trim()){
+    throw new Error('Last name is required for Admin and Staff accounts.');
+  }
+
+  let companyNameTrim = '';
+  if(role === 'trade'){
+    companyNameTrim = (companyName || '').trim();
+    if(!companyNameTrim){
+      throw new Error('Company is required for Trade accounts.');
+    }
+  }
+
+  const update = {
+    firstName: (role === 'admin' || role === 'staff') ? (firstName || '').trim() : ((firstName || '').trim() || null),
+    lastName: (role === 'admin' || role === 'staff') ? (lastName || '').trim() : ((lastName || '').trim() || null),
+    companyName: role === 'trade' ? companyNameTrim : null,
+    isCompanyAdmin: role === 'trade' ? !!isCompanyAdmin : false,
+    mobile: role === 'trade' ? (mobile || '').trim() : null,
+    email: role === 'trade' ? (email || '').trim() : null,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: currentUser ? currentUser.uid : null,
+    updatedByUsername: userProfile ? userProfile.username : null
+  };
+
+  // Region reassignment — Admin accounts are always both regions,
+  // implicitly, so there's nothing to resolve for them.
+  if(role !== 'admin'){
+    let regions = regionsPick === 'BOTH' ? ALL_REGION_IDS.slice() : (regionsPick ? [regionsPick] : []);
+    if(!isAdmin()){
+      const own = myRegions();
+      const outside = regions.filter(r => !own.includes(r));
+      if(outside.length){
+        throw new Error(`You can only assign regions within your own (${regionsLabel(own)}).`);
+      }
+    }
+    if(!regions.length){
+      throw new Error('Pick at least one region.');
+    }
+    update.regions = regions;
+    // If the account's active list is no longer valid under the new
+    // region set, fall back to "both merged" rather than leaving it
+    // pointing at a region the account can no longer see.
+    if(regions.length > 1){
+      update.lastListId = target.lastListId && regions.includes(target.lastListId) ? target.lastListId : 'ALL';
+    } else {
+      update.lastListId = regions[0];
+    }
+  }
+
+  await db.collection('users').doc(target.uid).set(update, { merge: true });
+
+  addAuditLogEntry({
+    type: 'account_updated',
+    uid: currentUser ? currentUser.uid : null,
+    username: userProfile ? userProfile.username : 'unknown',
+    role: userProfile ? userProfile.role : null,
+    targetUid: target.uid,
+    targetUsername: target.username,
+    targetRole: role
+  });
+}
+
 async function resetUserPassword(uid, username){
   const newPassword = generateRandomPassword();
   try{
@@ -1649,6 +1757,7 @@ function populateRegionPicker(selectEl, allowedRegionIds){
 let usersListCache = [];
 let usersFilterValue = 'all';
 let usersSearchValue = '';
+let knownCompanies = []; // distinct Trade company names seen so far, shared by the add and edit forms
 
 // Applies both the role filter and the search box to usersListCache.
 function filteredUsersList(){
@@ -1684,6 +1793,7 @@ async function renderUsersTab(){
 
   // Keep the company dropdown current (distinct company names seen so far).
   const companies = Array.from(new Set(usersListCache.filter(u=>u.role==='trade' && u.companyName).map(u=>u.companyName))).sort();
+  knownCompanies = companies;
   const companySel = document.getElementById('newUserCompanySelect');
   const prevVal = companySel.value;
   companySel.innerHTML = companies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')
@@ -1727,6 +1837,7 @@ function renderUsersTable(){
       <td><span class="status-pill ${active?'active':'pending'}"><span class="dot"></span>${active?'Active':'Pending'}</span></td>
       <td>
         <div class="user-actions">
+          ${canManage ? `<button class="btn small ghost" data-act="edit">Edit</button>` : ''}
           ${canManage ? `<button class="btn small ghost" data-act="reset">Reset password</button>` : ''}
           ${showPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
           ${canManage && !isSelf ? `<button class="btn small ghost danger" data-act="remove">Remove</button>` : ''}
@@ -1743,6 +1854,13 @@ function renderUsersTable(){
       const revealed = el.textContent !== '••••••••';
       el.textContent = revealed ? '••••••••' : (u ? u.password : '');
       btn.textContent = revealed ? 'Show' : 'Hide';
+    });
+  });
+  body.querySelectorAll('[data-act="edit"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
+      if(u) openEditUser(u);
     });
   });
   body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
@@ -1775,10 +1893,66 @@ function updateAddUserFormVisibility(){
   document.getElementById('newUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
 }
 
+// Opens the edit form for an existing account, pre-filled with its
+// current details. Username, password and role are deliberately not
+// editable here — see the comment on adminUpdateUser for why.
+function openEditUser(u){
+  document.getElementById('addUserBox').style.display = 'none';
+  document.getElementById('emailTemplateBox').style.display = 'none';
+
+  const role = u.role;
+  const box = document.getElementById('editUserBox');
+  box.dataset.uid = u.uid;
+  document.getElementById('editUserError').textContent = '';
+  document.getElementById('editUserUsernameLabel').textContent = u.username || '';
+
+  document.getElementById('editUserFirstName').value = u.firstName || '';
+  document.getElementById('editUserLastName').value = u.lastName || '';
+  document.getElementById('editUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
+  document.getElementById('editUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
+
+  document.getElementById('editUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
+  document.getElementById('editUserEmailRow').style.display = role === 'trade' ? '' : 'none';
+
+  const companySel = document.getElementById('editUserCompanySelect');
+  companySel.innerHTML = knownCompanies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')
+    + `<option value="__NEW__">+ New company…</option>`;
+  const companyField = document.getElementById('editUserCompany');
+  if(role === 'trade' && u.companyName && knownCompanies.includes(u.companyName)){
+    companySel.value = u.companyName;
+    companyField.style.display = 'none';
+    companyField.value = '';
+  } else {
+    companySel.value = '__NEW__';
+    companyField.style.display = '';
+    companyField.value = u.companyName || '';
+  }
+  document.getElementById('editUserMobile').value = u.mobile || '';
+  document.getElementById('editUserEmail').value = u.email || '';
+  document.getElementById('editUserCompanyAdmin').checked = !!u.isCompanyAdmin;
+
+  // Region picker — Admin accounts are always both regions, implicitly,
+  // so there's nothing to pick for them.
+  const regionBox = document.getElementById('editUserRegionBox');
+  if(role === 'admin'){
+    regionBox.innerHTML = `<label class="field-label">Region</label> <span class="mono-input" style="display:inline-block; padding:8px 12px;">All Regions</span>`;
+  } else {
+    const allowedRegionIds = isAdmin() ? ALL_REGION_IDS : myRegions();
+    regionBox.innerHTML = `<label class="field-label">Region</label><select id="editUserRegion" class="mono-input" style="width:100%;"></select>`;
+    populateRegionPicker(document.getElementById('editUserRegion'), allowedRegionIds);
+    const currentRegions = accountRegions(u);
+    document.getElementById('editUserRegion').value = currentRegions.length > 1 ? 'BOTH' : (currentRegions[0] || '');
+  }
+
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function bindUsersTab(){
   document.getElementById('addUserBtn').addEventListener('click', ()=>{
     document.getElementById('addUserBox').style.display = 'block';
     document.getElementById('emailTemplateBox').style.display = 'none';
+    document.getElementById('editUserBox').style.display = 'none';
     document.getElementById('addUserError').textContent = '';
     document.getElementById('newUserUsername').value = '';
     document.getElementById('newUserPassword').value = '';
@@ -1843,6 +2017,43 @@ function bindUsersTab(){
   });
   document.getElementById('closeEmailTemplateBtn').addEventListener('click', ()=>{
     document.getElementById('emailTemplateBox').style.display = 'none';
+  });
+  document.getElementById('editUserCompanySelect').addEventListener('change', (e)=>{
+    document.getElementById('editUserCompany').style.display = e.target.value === '__NEW__' ? '' : 'none';
+    if(e.target.value !== '__NEW__') document.getElementById('editUserCompany').value = '';
+  });
+  document.getElementById('cancelEditUserBtn').addEventListener('click', ()=>{
+    document.getElementById('editUserBox').style.display = 'none';
+  });
+  document.getElementById('saveEditUserBtn').addEventListener('click', async ()=>{
+    const errBox = document.getElementById('editUserError');
+    errBox.textContent = '';
+    const uid = document.getElementById('editUserBox').dataset.uid;
+    const target = usersListCache.find(x => x.uid === uid);
+    if(!target){
+      errBox.textContent = 'Could not find that account — refresh the page and try again.';
+      return;
+    }
+    const firstName = document.getElementById('editUserFirstName').value;
+    const lastName = document.getElementById('editUserLastName').value;
+    const companySel = document.getElementById('editUserCompanySelect').value;
+    const companyName = target.role === 'trade' ? (companySel === '__NEW__' ? document.getElementById('editUserCompany').value : companySel) : '';
+    const mobile = document.getElementById('editUserMobile').value;
+    const email = document.getElementById('editUserEmail').value;
+    const isCompanyAdmin = document.getElementById('editUserCompanyAdmin').checked;
+    const regionSelectEl = document.getElementById('editUserRegion');
+    const regionsPick = regionSelectEl ? regionSelectEl.value : null;
+    const btn = document.getElementById('saveEditUserBtn');
+    btn.disabled = true;
+    try{
+      await adminUpdateUser(target, { firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick });
+      document.getElementById('editUserBox').style.display = 'none';
+      toast(`Account "${target.username}" updated`, 'ok');
+      await renderUsersTab();
+    }catch(err){
+      errBox.textContent = err.message || 'Could not save those changes.';
+    }
+    btn.disabled = false;
   });
 }
 
@@ -2594,14 +2805,6 @@ function bindSupportTab(){
       <div class="body"><h4>${escapeHtml(s.title)}</h4><p>${escapeHtml(s.body)}</p></div>
     </div>
   `).join('');
-
-  const frame = document.getElementById('supportVideoFrame');
-  const placeholder = document.getElementById('supportVideoPlaceholder');
-  if(SUPPORT_VIDEO_URL){
-    frame.src = SUPPORT_VIDEO_URL;
-    frame.style.display = 'block';
-    placeholder.style.display = 'none';
-  }
 }
 
 function isHeicFile(file){
@@ -2905,7 +3108,10 @@ async function renderListSelector(){
     document.getElementById('listSelect').addEventListener('change', async (e)=>{
       activeListId = e.target.value;
       await db.collection('users').doc(currentUser.uid).set({ lastListId: activeListId }, { merge: true });
-      document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · ${activeListId === 'ALL' ? regionsLabel(regions) : regionLabel(activeListId)}`;
+      // The header badge always reflects the account's actual region
+      // permission (e.g. "All Regions"), never which single region's list
+      // is currently being viewed below — having "All Regions" trumps
+      // whichever specific list is selected, so this never changes here.
       State.properties = await loadPropertiesForList(activeListId);
       dbFilter = ''; document.getElementById('dbSearch').value = '';
       renderDbCount(); renderDbTable(); renderListSelector();
