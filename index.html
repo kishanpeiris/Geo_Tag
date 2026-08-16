@@ -82,6 +82,11 @@
   #listAssignOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
   #listAssignOverlay.hidden{display:none;}
   .login-card{width:100%; max-width:380px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:28px 26px;}
+  .login-brand{display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:22px; text-align:center;}
+  .login-brand .brand-mark{width:52px; height:52px; border-width:1.5px;}
+  .login-brand .brand-mark svg{width:28px; height:28px;}
+  .login-brand h1{font-size:19px; margin:0; letter-spacing:0.01em; font-weight:800;}
+  .login-brand p{margin:2px 0 0; font-size:12px; color:var(--text-dim); font-family:var(--mono); letter-spacing:0.03em;}
   .login-card h2{margin:0 0 4px; font-size:17px; font-weight:800;}
   .login-card p.sub{margin:0 0 20px; font-size:12.5px; color:var(--text-dim);}
   .login-tabs{display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--border-soft);}
@@ -281,7 +286,11 @@
   table.db-table td input{background:transparent; border:1px solid transparent; padding:4px 6px; font-size:12.5px; color:var(--text); width:100%; border-radius:4px; font-family:var(--sans);}
   table.db-table td input:hover, table.db-table td input:focus{border-color:var(--border); background:var(--bg-inset);}
   table.db-table td.code input{font-family:var(--mono); color:var(--amber);}
-  .db-scroll{max-height:340px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:6px; margin-top:10px;}
+  .db-scroll{max-height:765px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:6px; margin-top:10px;}
+  .db-scroll::-webkit-scrollbar{width:16px;}
+  .db-scroll::-webkit-scrollbar-track{background:var(--bg-inset);}
+  .db-scroll::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px; border:4px solid var(--bg-inset); background-clip:padding-box;}
+  .db-scroll::-webkit-scrollbar-thumb:hover{background:var(--text-faint); background-clip:padding-box;}
   .upload-modes{display:flex; gap:16px; margin:12px 0; font-size:12.5px; color:var(--text-dim);}
   .upload-modes label{display:flex; align-items:center; gap:6px; cursor:pointer;}
 
@@ -344,7 +353,14 @@
 
 <div id="loginOverlay">
   <div class="login-card">
-    <h2 id="loginHeading">Sign in to Field GeoTag Kit</h2>
+    <div class="login-brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#F2A93B" stroke-width="1.6"><path d="M12 21s7-7.2 7-12a7 7 0 10-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.4"/></svg>
+      </div>
+      <h1>Field GeoTag Kit</h1>
+      <p>NZ PROPERTY PHOTO GEOTAGGING</p>
+    </div>
+    <h2 id="loginHeading">Sign in</h2>
     <p class="sub" id="loginSub">Use the username and password your Admin or Staff manager gave you.</p>
 
     <form id="loginForm">
@@ -559,7 +575,7 @@
       <div class="settings-nav" id="settingsNav">
         <button class="settings-nav-btn active" data-subtab="account">My Account</button>
         <button class="settings-nav-btn" data-subtab="appearance">Appearance</button>
-        <button class="settings-nav-btn" data-subtab="compression" id="settingsNavCompression" style="display:none;">Photo Compression</button>
+        <button class="settings-nav-btn" data-subtab="compression" id="settingsNavCompression">Photo Compression</button>
         <div class="settings-nav-divider" id="settingsNavAdminDivider" style="display:none;"></div>
         <button class="settings-nav-btn" data-subtab="users" id="settingsNavUsers" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
         <button class="settings-nav-btn" data-subtab="activity" id="settingsNavActivity" style="display:none;">Activity Log <span class="badge-count" id="logCount">0</span></button>
@@ -592,7 +608,7 @@
           </div>
         </div>
 
-        <!-- ---- Photo Compression (Trade only) ---- -->
+        <!-- ---- Photo Compression (everyone) ---- -->
         <div class="settings-subpanel" id="subpanel-compression">
           <div class="panel-head"><span class="eyebrow">IMG</span><h2>Photo compression</h2></div>
           <div class="panel-sub">Applies to this device only.</div>
@@ -604,7 +620,10 @@
                 re-encoded to a smaller JPEG before the location is written in, which cuts file size substantially
                 with very little visible quality loss. The location is always written in <em>after</em> compression,
                 so it's never affected either way. Non-JPEG photos (PNG, HEIC, etc.) are automatically converted to
-                JPEG so a location can be embedded at all — that happens whether this is on or off.
+                JPEG so a location can be embedded at all — that happens whether this is on or off. Every exported
+                photo also has its non-essential metadata (camera make/model, maker notes, thumbnails) stripped out,
+                keeping just the GPS location — smaller, cleaner files that import reliably into FileMaker WebDirect
+                and FileMaker Server.
               </div>
             </div>
             <label class="toggle-switch">
@@ -622,6 +641,7 @@
           <div class="flex-between" style="margin-bottom:14px; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
               <span style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</span>
+              <input type="search" id="usersSearch" class="mono-input" placeholder="Search username, name, company…" style="width:220px;">
               <select id="usersFilterSelect" class="mono-input" style="width:auto;">
                 <option value="all">All users</option>
                 <option value="admin">Admin</option>
@@ -667,7 +687,7 @@
                 <input type="text" id="newUserFirstName" class="mono-input" placeholder="e.g. Jordan">
               </div>
               <div id="newUserLastNameBox">
-                <label class="field-label">Last name <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(Admin/Staff)</span></label>
+                <label class="field-label" id="newUserLastNameLabel">Last name</label>
                 <input type="text" id="newUserLastName" class="mono-input" placeholder="e.g. Smith">
               </div>
             </div>
@@ -774,16 +794,6 @@
             <button class="btn small primary" id="saveTemplateBtn">Save template</button>
             <button class="btn small ghost" id="resetTemplateBtn">Reset to default</button>
             <span id="templateSaveStatus" style="font-size:11.5px; color:var(--text-faint);"></span>
-          </div>
-          <div class="note" style="margin-top:16px;">
-            <strong>About the logos:</strong> browser email links (the kind this app uses to open a new message in
-            Outlook) can't carry file attachments or images — that's a restriction of every mail client, not
-            something this app can work around. The reliable way to get both logos to appear at the bottom of every
-            invite is to set them up once as your default signature in Outlook (File &gt; Options &gt; Mail &gt;
-            Signatures, with "Automatically include my signature on new messages" turned on) — Outlook then adds
-            that signature, editable or removable per email, to every new message this app opens for you, these
-            invites included. I've included both logo image files alongside this download so you can drop them
-            straight into a signature.
           </div>
         </div>
 
@@ -1041,7 +1051,8 @@ function updateRoleUI(){
   document.getElementById('settingsNavAudit').style.display = show ? '' : 'none';
   document.getElementById('settingsNavEmailTemplate').style.display = show ? '' : 'none';
   document.getElementById('settingsNavAdminDivider').style.display = show ? '' : 'none';
-  document.getElementById('settingsNavCompression').style.display = isStaffOrAdmin() ? 'none' : '';
+  // Photo Compression is available to every role now — it's a per-device
+  // preference, not something tied to who's uploading.
   document.getElementById('supportTabBtn').style.display = isStaffOrAdmin() ? 'none' : '';
 
   document.getElementById('usersPanelTitle').textContent = isAdmin() ? 'Users' : 'Trade users';
@@ -1422,7 +1433,7 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
     regions,
     lastListId: initialActive,
     firstName: (role === 'admin' || role === 'staff') ? (firstName || '').trim() : ((firstName || '').trim() || null),
-    lastName: (role === 'admin' || role === 'staff') ? (lastName || '').trim() : null,
+    lastName: (role === 'admin' || role === 'staff') ? (lastName || '').trim() : ((lastName || '').trim() || null),
     companyName: role === 'trade' ? companyNameTrim : null,
     isCompanyAdmin: role === 'trade' ? !!isCompanyAdmin : false,
     mobile: role === 'trade' ? (mobile || '').trim() : null,
@@ -1637,6 +1648,21 @@ function populateRegionPicker(selectEl, allowedRegionIds){
 
 let usersListCache = [];
 let usersFilterValue = 'all';
+let usersSearchValue = '';
+
+// Applies both the role filter and the search box to usersListCache.
+function filteredUsersList(){
+  let users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
+  const q = usersSearchValue.trim().toLowerCase();
+  if(q){
+    users = users.filter(u => {
+      const hay = [u.username, u.firstName, u.lastName, u.companyName, u.mobile, u.email]
+        .filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  return users;
+}
 
 function usersRowsForExport(users){
   return users.map(u => ({
@@ -1669,7 +1695,7 @@ async function renderUsersTab(){
 }
 
 function renderUsersTable(){
-  const users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
+  const users = filteredUsersList();
   document.getElementById('usersCount2').textContent = users.length;
 
   const body = document.getElementById('usersTableBody');
@@ -1745,8 +1771,8 @@ function updateAddUserFormVisibility(){
   document.getElementById('newUserListBox').style.display = role === 'admin' ? 'none' : '';
   document.getElementById('newUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
   document.getElementById('newUserEmailRow').style.display = role === 'trade' ? '' : 'none';
-  document.getElementById('newUserLastNameBox').style.display = role === 'trade' ? 'none' : '';
   document.getElementById('newUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
+  document.getElementById('newUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
 }
 
 function bindUsersTab(){
@@ -1779,8 +1805,12 @@ function bindUsersTab(){
     usersFilterValue = e.target.value;
     renderUsersTable();
   });
+  document.getElementById('usersSearch').addEventListener('input', (e)=>{
+    usersSearchValue = e.target.value;
+    renderUsersTable();
+  });
   document.getElementById('exportUsersBtn').addEventListener('click', ()=>{
-    const users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
+    const users = filteredUsersList();
     const csv = Papa.unparse(usersRowsForExport(users));
     downloadText(csv, `users_${usersFilterValue}_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
   });
@@ -2469,22 +2499,35 @@ function sanitizeForFilename(s){
   return (s||'').toString().trim().replace(/[^a-zA-Z0-9\-_]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
 }
 
+// Writes GPS EXIF and, deliberately, almost nothing else. Camera make/model,
+// maker notes, embedded thumbnails and other bulky/non-essential EXIF are
+// stripped out on every export (whether or not photo compression is on) —
+// that keeps files smaller and avoids the kind of embedded metadata that
+// trips up FileMaker WebDirect/Server imports. The one thing besides GPS
+// that's preserved is Orientation, so photos still display right-way-up.
 async function geoTagJpeg(dataUrl, lat, lon){
-  let exifObj;
-  try{ exifObj = piexif.load(dataUrl); }
-  catch(e){ exifObj = {"0th":{}, "Exif":{}, "GPS":{}, "1st":{}, "thumbnail":null}; }
-  if(!exifObj.GPS) exifObj.GPS = {};
+  let orientation;
+  try{
+    const existing = piexif.load(dataUrl);
+    if(existing && existing['0th'] && existing['0th'][piexif.ImageIFD.Orientation] !== undefined){
+      orientation = existing['0th'][piexif.ImageIFD.Orientation];
+    }
+  }catch(e){ /* no readable EXIF on the source — nothing to preserve, that's fine */ }
+
+  const zeroth = {};
+  if(orientation !== undefined) zeroth[piexif.ImageIFD.Orientation] = orientation;
+
   const gps = {};
   gps[piexif.GPSIFD.GPSLatitudeRef] = lat >= 0 ? 'N' : 'S';
   gps[piexif.GPSIFD.GPSLatitude] = decToDmsRational(lat);
   gps[piexif.GPSIFD.GPSLongitudeRef] = lon >= 0 ? 'E' : 'W';
   gps[piexif.GPSIFD.GPSLongitude] = decToDmsRational(lon);
-  exifObj.GPS = gps;
-  if(exifObj.thumbnail){ /* keep as-is */ }
+
+  const exifObj = {"0th": zeroth, "Exif": {}, "GPS": gps, "1st": {}, "thumbnail": null};
   let exifBytes;
   try{ exifBytes = piexif.dump(exifObj); }
   catch(e){
-    // retry with a clean object if existing exif was malformed
+    // retry with a clean object if the orientation value was somehow malformed
     exifBytes = piexif.dump({"0th":{}, "Exif":{}, "GPS":gps, "1st":{}, "thumbnail":null});
   }
   return piexif.insert(exifBytes, dataUrl);
@@ -2508,8 +2551,8 @@ function uniqueName(name, usedSet){
    Writing the location AFTER compression (not before) is what guarantees
    the coordinates always survive — compression happens first, tagging
    happens last, every time, regardless of whether compression is on.
-   Trade accounts can turn compression off in Settings if they'd rather
-   keep full-resolution originals; it defaults to on.
+   Anyone can turn compression off in Settings if they'd rather keep
+   full-resolution originals; it defaults to on.
 */
 const COMPRESS_MAX_DIMENSION = 2400; // long-edge pixels — plenty for property documentation photos
 const COMPRESS_JPEG_QUALITY = 0.82;   // visually near-lossless at this resolution, big size win
