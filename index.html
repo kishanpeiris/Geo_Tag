@@ -6,10 +6,13 @@
 <title>Field GeoTag Kit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -33,6 +36,23 @@
     --red:#E1685A;
     --mono:'Space Mono', ui-monospace, monospace;
     --sans:'Inter', system-ui, sans-serif;
+  }
+  :root[data-theme="light"]{
+    --bg:#F2F4F7;
+    --bg-panel:#FFFFFF;
+    --bg-elevated:#FFFFFF;
+    --bg-inset:#EAEDF1;
+    --border:#D3D9E0;
+    --border-soft:#E2E6EB;
+    --text:#161B21;
+    --text-dim:#48525E;
+    --text-faint:#78828E;
+    --amber:#9C5F0A;
+    --amber-dim:#D79A44;
+    --teal:#166776;
+    --teal-dim:#5FA3B2;
+    --green:#1F7A4C;
+    --red:#B33A28;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -73,6 +93,49 @@
   .login-links button{background:none; border:none; color:var(--teal); font-size:11.5px; cursor:pointer; padding:0; font-family:var(--sans);}
   .login-divider{display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:11px; margin-bottom:16px;}
   .login-divider::before, .login-divider::after{content:""; flex:1; height:1px; background:var(--border-soft);}
+  body{ transition: background-color .15s ease, color .15s ease; }
+  .theme-toggle{
+    display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:6px;
+    background:var(--bg-inset); border:1px solid var(--border); color:var(--text-dim); cursor:pointer;
+  }
+  .theme-toggle:hover{color:var(--amber); border-color:var(--amber-dim);}
+  .toggle-switch{position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0;}
+  .toggle-switch input{opacity:0; width:0; height:0;}
+  .toggle-slider{position:absolute; cursor:pointer; inset:0; background:var(--bg-inset); border:1px solid var(--border); border-radius:24px; transition:.15s;}
+  .toggle-slider::before{content:""; position:absolute; height:16px; width:16px; left:3px; top:3px; background:var(--text-faint); border-radius:50%; transition:.15s;}
+  .toggle-switch input:checked + .toggle-slider{background:rgba(242,169,59,0.25); border-color:var(--amber-dim);}
+  .toggle-switch input:checked + .toggle-slider::before{transform:translateX(18px); background:var(--amber);}
+  .settings-layout{display:flex; gap:0; min-height:60vh;}
+  .settings-nav{width:190px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; padding:20px 12px; border-right:1px solid var(--border-soft);}
+  .settings-nav-btn{
+    display:flex; align-items:center; justify-content:space-between; gap:6px; text-align:left; background:none; border:none;
+    color:var(--text-dim); font-family:var(--sans); font-size:13px; padding:9px 10px; border-radius:5px; cursor:pointer;
+  }
+  .settings-nav-btn:hover{background:var(--bg-inset); color:var(--text);}
+  .settings-nav-btn.active{background:rgba(242,169,59,0.1); color:var(--amber); font-weight:600;}
+  .settings-nav-divider{height:1px; background:var(--border-soft); margin:8px 4px;}
+  .settings-content{flex:1; padding:20px 26px; min-width:0;}
+  .settings-subpanel{display:none;}
+  .settings-subpanel.active{display:block;}
+  @media (max-width: 720px){
+    .settings-layout{flex-direction:column;}
+    .settings-nav{width:100%; flex-direction:row; flex-wrap:wrap; border-right:none; border-bottom:1px solid var(--border-soft);}
+  }
+  .account-detail-row{display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border-soft); gap:12px;}
+  .account-detail-row:last-child{border-bottom:none;}
+  .account-detail-label{font-size:11.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; font-family:var(--mono);}
+  .account-detail-value{font-family:var(--mono); font-size:13.5px;}
+  .reveal-password{display:inline-flex; align-items:center; gap:8px;}
+  .reveal-password button{background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; font-family:var(--sans);}
+  .reveal-password button:hover{color:var(--amber); border-color:var(--amber-dim);}
+  .video-embed-wrap{position:relative; width:100%; padding-top:56.25%; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:8px; overflow:hidden;}
+  .video-embed-wrap iframe{position:absolute; inset:0; width:100%; height:100%; border:0; display:none;}
+  .video-embed-placeholder{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--text-faint); font-size:13px; line-height:1.6;}
+  .support-step{display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--border-soft);}
+  .support-step:last-child{border-bottom:none;}
+  .support-step .num{flex-shrink:0; width:28px; height:28px; border-radius:50%; background:var(--bg-inset); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:12px; color:var(--amber);}
+  .support-step .body h4{margin:0 0 4px; font-size:14px;}
+  .support-step .body p{margin:0; font-size:12.5px; color:var(--text-dim); line-height:1.6;}
   .user-badge{display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-dim); font-family:var(--mono);}
   .user-badge .dot{width:7px; height:7px; border-radius:50%; background:var(--green); flex-shrink:0;}
   .user-badge button{background:none; border:none; color:var(--text-faint); text-decoration:underline; cursor:pointer; font-family:var(--sans); font-size:11.5px; padding:0;}
@@ -248,6 +311,8 @@
   .audit-item .kind{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:3px; text-transform:uppercase;}
   .audit-item .kind.login{color:var(--teal); border:1px solid var(--teal-dim);}
   .audit-item .kind.geotag{color:var(--amber); border:1px solid var(--amber-dim);}
+  .audit-item .kind.removed{color:var(--red); border:1px solid rgba(225,104,90,0.4);}
+  .audit-item .kind.created{color:var(--green); border:1px solid rgba(95,179,128,0.4);}
   .audit-item .ts{color:var(--text-faint); font-size:11px;}
   .audit-item .detail{color:var(--text-dim); margin-top:3px; font-family:var(--mono); font-size:11px;}
 
@@ -291,10 +356,6 @@
         <label class="field-label">Password</label>
         <input type="password" id="loginPassword" required autocomplete="current-password">
       </div>
-      <div class="login-field" style="display:flex; align-items:center; gap:8px;">
-        <input type="checkbox" id="rememberLoginCheck" style="width:auto; margin:0;">
-        <label for="rememberLoginCheck" style="font-size:11.5px; color:var(--text-dim); text-transform:none; font-weight:400; letter-spacing:0; margin:0; cursor:pointer;">Remember my login on this device</label>
-      </div>
       <button type="submit" class="btn primary" id="loginSubmitBtn" style="width:100%; justify-content:center;">Sign in</button>
       <div class="login-error" id="loginError"></div>
     </form>
@@ -333,9 +394,8 @@
       <div class="top-tabs">
         <button class="tab-btn active" data-tab="main">Job</button>
         <button class="tab-btn" data-tab="db">Property DB <span class="badge-count" id="dbCount">0</span></button>
-        <button class="tab-btn" data-tab="log">Activity Log <span class="badge-count" id="logCount">0</span></button>
-        <button class="tab-btn" data-tab="users" id="usersTabBtn" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
-        <button class="tab-btn" data-tab="audit" id="auditTabBtn" style="display:none;">Audit Log</button>
+        <button class="tab-btn" data-tab="support" id="supportTabBtn" style="display:none;">Support</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
     </div>
   </header>
@@ -382,6 +442,10 @@
         <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn small" id="reLookupBtn">↻ Look up again</button>
           <span id="geoStatus" style="font-size:11.5px; color:var(--text-faint); align-self:center;"></span>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="field-label">Map <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(drag the pin to adjust the location)</span></label>
+          <div id="propertyMap" style="height:260px; border-radius:8px; border:1px solid var(--border-soft); overflow:hidden;"></div>
         </div>
       </div>
     </div>
@@ -489,118 +553,261 @@
   </div>
 
   <!-- ===================== LOG TAB ===================== -->
-  <div class="drawer" id="tab-log">
-    <div class="panel">
-      <div class="panel-head"><span class="eyebrow">LOG</span><h2>Activity log</h2></div>
-      <div class="panel-sub">A shared record of every batch processed, by work order — visible to Admin and Staff.</div>
-      <div class="flex-between" style="margin-bottom:10px;" id="logControls">
-        <span style="font-size:12.5px; color:var(--text-dim);"><span id="logCount2">0</span> entries</span>
-        <div style="display:flex; gap:8px;">
-          <button class="btn small ghost" id="refreshLogBtn">↻ Refresh</button>
-          <button class="btn small ghost" id="exportLogBtn">Export CSV</button>
-          <button class="btn small ghost danger" id="clearLogBtn">Clear log</button>
+  <!-- ===================== SETTINGS (everyone — content varies by role) ===================== -->
+  <div class="drawer" id="tab-settings">
+    <div class="settings-layout">
+      <div class="settings-nav" id="settingsNav">
+        <button class="settings-nav-btn active" data-subtab="account">My Account</button>
+        <button class="settings-nav-btn" data-subtab="appearance">Appearance</button>
+        <button class="settings-nav-btn" data-subtab="compression" id="settingsNavCompression" style="display:none;">Photo Compression</button>
+        <div class="settings-nav-divider" id="settingsNavAdminDivider" style="display:none;"></div>
+        <button class="settings-nav-btn" data-subtab="users" id="settingsNavUsers" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
+        <button class="settings-nav-btn" data-subtab="activity" id="settingsNavActivity" style="display:none;">Activity Log <span class="badge-count" id="logCount">0</span></button>
+        <button class="settings-nav-btn" data-subtab="audit" id="settingsNavAudit" style="display:none;">Audit Log</button>
+        <button class="settings-nav-btn" data-subtab="emailTemplate" id="settingsNavEmailTemplate" style="display:none;">Email Template</button>
+      </div>
+
+      <div class="settings-content">
+
+        <!-- ---- My Account (everyone) ---- -->
+        <div class="settings-subpanel active" id="subpanel-account">
+          <div class="panel-head"><span class="eyebrow">ME</span><h2>My account</h2></div>
+          <div class="panel-sub">Your own account details. Only you (and, depending on role, an Admin/Staff who manages your account) can see this.</div>
+          <div id="myAccountBox"></div>
         </div>
-      </div>
-      <div id="logList"></div>
-    </div>
-  </div>
 
-  <!-- ===================== USERS TAB (Admin / Staff) ===================== -->
-  <div class="drawer" id="tab-users">
-    <div class="panel">
-      <div class="panel-head"><span class="eyebrow">USR</span><h2 id="usersPanelTitle">Users</h2></div>
-      <div class="panel-sub" id="usersPanelSub">Add and manage accounts. Every account is created here — there's no self-signup.</div>
-
-      <div class="flex-between" style="margin-bottom:14px;">
-        <div style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</div>
-        <button class="btn small primary" id="addUserBtn">+ Add user</button>
-      </div>
-
-      <div id="addUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
-        <div class="row">
-          <div>
-            <label class="field-label">Username</label>
-            <input type="text" id="newUserUsername" class="mono-input" placeholder="e.g. jsmith" autocapitalize="off" spellcheck="false">
+        <!-- ---- Appearance (everyone) ---- -->
+        <div class="settings-subpanel" id="subpanel-appearance">
+          <div class="panel-head"><span class="eyebrow">APP</span><h2>Appearance</h2></div>
+          <div class="panel-sub">Applies to this device only.</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:16px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px;">
+            <div>
+              <div style="font-weight:600; margin-bottom:4px;">Light mode</div>
+              <div style="font-size:12.5px; color:var(--text-dim);">Switches between the dark and light color themes.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="themeToggleCheck">
+              <span class="toggle-slider"></span>
+            </label>
           </div>
-          <div>
-            <label class="field-label">Password</label>
-            <div style="display:flex; gap:8px;">
-              <input type="text" id="newUserPassword" class="mono-input" placeholder="password">
-              <button type="button" class="btn small ghost" id="genPasswordBtn">Generate</button>
+        </div>
+
+        <!-- ---- Photo Compression (Trade only) ---- -->
+        <div class="settings-subpanel" id="subpanel-compression">
+          <div class="panel-head"><span class="eyebrow">IMG</span><h2>Photo compression</h2></div>
+          <div class="panel-sub">Applies to this device only.</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:16px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px;">
+            <div style="max-width:480px;">
+              <div style="font-weight:600; margin-bottom:4px;">Compress photos before saving</div>
+              <div style="font-size:12.5px; color:var(--text-dim); line-height:1.5;">
+                Phone photos — especially HDR ones — are often 3–5MB or more. With this on, photos are resized and
+                re-encoded to a smaller JPEG before the location is written in, which cuts file size substantially
+                with very little visible quality loss. The location is always written in <em>after</em> compression,
+                so it's never affected either way. Non-JPEG photos (PNG, HEIC, etc.) are automatically converted to
+                JPEG so a location can be embedded at all — that happens whether this is on or off.
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="compressToggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- ---- Users (Admin / Staff) ---- -->
+        <div class="settings-subpanel" id="subpanel-users">
+          <div class="panel-head"><span class="eyebrow">USR</span><h2 id="usersPanelTitle">Users</h2></div>
+          <div class="panel-sub" id="usersPanelSub">Add and manage accounts. Every account is created here — there's no self-signup.</div>
+
+          <div class="flex-between" style="margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <span style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</span>
+              <select id="usersFilterSelect" class="mono-input" style="width:auto;">
+                <option value="all">All users</option>
+                <option value="admin">Admin</option>
+                <option value="staff">Staff</option>
+                <option value="trade">Trade</option>
+              </select>
+              <button class="btn small ghost" id="exportUsersBtn">Export CSV</button>
+            </div>
+            <button class="btn small primary" id="addUserBtn">+ Add user</button>
+          </div>
+
+          <div id="addUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+            <div class="row">
+              <div>
+                <label class="field-label">Username</label>
+                <input type="text" id="newUserUsername" class="mono-input" placeholder="e.g. jsmith" autocapitalize="off" spellcheck="false">
+              </div>
+              <div>
+                <label class="field-label">Password</label>
+                <div style="display:flex; gap:8px;">
+                  <input type="text" id="newUserPassword" class="mono-input" placeholder="password">
+                  <button type="button" class="btn small ghost" id="genPasswordBtn">Generate</button>
+                </div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:12px;">
+              <div id="newUserRoleBox">
+                <label class="field-label">Role</label>
+                <select id="newUserRole" class="mono-input" style="width:100%;">
+                  <option value="trade">Trade</option>
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div id="newUserListBox">
+                <label class="field-label">Region</label>
+                <select id="newUserList" class="mono-input" style="width:100%;"></select>
+              </div>
+            </div>
+            <div class="row" id="newUserNameFieldsBox" style="margin-top:12px;">
+              <div>
+                <label class="field-label" id="newUserFirstNameLabel">First name</label>
+                <input type="text" id="newUserFirstName" class="mono-input" placeholder="e.g. Jordan">
+              </div>
+              <div id="newUserLastNameBox">
+                <label class="field-label">Last name <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(Admin/Staff)</span></label>
+                <input type="text" id="newUserLastName" class="mono-input" placeholder="e.g. Smith">
+              </div>
+            </div>
+            <div class="row" id="newUserTradeFieldsBox" style="margin-top:12px;">
+              <div>
+                <label class="field-label">Company <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(required for Trade)</span></label>
+                <select id="newUserCompanySelect" class="mono-input" style="width:100%;">
+                  <option value="__NEW__">+ New company…</option>
+                </select>
+                <input type="text" id="newUserCompany" class="mono-input" placeholder="e.g. Smith Roofing Ltd" style="margin-top:6px;">
+              </div>
+              <div>
+                <label class="field-label">Mobile <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+                <input type="text" id="newUserMobile" class="mono-input" placeholder="e.g. 021 234 5678">
+              </div>
+            </div>
+            <div class="row" id="newUserEmailRow" style="margin-top:12px;">
+              <div>
+                <label class="field-label">Email address <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
+                <input type="email" id="newUserEmail" class="mono-input" placeholder="e.g. name@company.co.nz">
+              </div>
+              <div id="newUserCompanyAdminBox" style="display:flex; align-items:flex-end; gap:8px; padding-bottom:9px;">
+                <input type="checkbox" id="newUserCompanyAdmin" style="width:auto;">
+                <label for="newUserCompanyAdmin" style="font-size:12.5px; color:var(--text-dim); cursor:pointer;">This is the company's admin account (emails address the company by name, not a first name)</label>
+              </div>
+            </div>
+            <div style="margin-top:14px; display:flex; gap:10px;">
+              <button class="btn small primary" id="createUserBtn">Create account</button>
+              <button class="btn small ghost" id="cancelAddUserBtn">Cancel</button>
+            </div>
+            <div class="login-error" id="addUserError"></div>
+          </div>
+
+          <div id="emailTemplateBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+            <label class="field-label">Login details email <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(edit before sending)</span></label>
+            <textarea id="emailTemplateBody" style="width:100%; min-height:140px; background:var(--bg-panel); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:10px 12px; font-family:var(--sans); font-size:13px;"></textarea>
+            <div style="margin-top:10px; display:flex; gap:10px;">
+              <a class="btn small primary" id="openMailBtn" href="#" style="text-decoration:none;">Open in email client</a>
+              <button class="btn small ghost" id="closeEmailTemplateBtn">Close</button>
             </div>
           </div>
-        </div>
-        <div class="row" style="margin-top:12px;">
-          <div id="newUserRoleBox">
-            <label class="field-label">Role</label>
-            <select id="newUserRole" class="mono-input" style="width:100%;">
-              <option value="trade">Trade</option>
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div id="newUserListBox">
-            <label class="field-label">Region</label>
-            <select id="newUserList" class="mono-input" style="width:100%;"></select>
-          </div>
-        </div>
-        <div class="row" id="newUserTradeFieldsBox" style="margin-top:12px;">
-          <div>
-            <label class="field-label">Company name <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(required for Trade)</span></label>
-            <input type="text" id="newUserCompany" class="mono-input" placeholder="e.g. Smith Roofing Ltd">
-          </div>
-          <div>
-            <label class="field-label">Mobile <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
-            <input type="text" id="newUserMobile" class="mono-input" placeholder="e.g. 021 234 5678">
-          </div>
-        </div>
-        <div class="row" style="margin-top:12px;">
-          <div>
-            <label class="field-label">Email address <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional)</span></label>
-            <input type="email" id="newUserEmail" class="mono-input" placeholder="e.g. name@company.co.nz">
-          </div>
-          <div></div>
-        </div>
-        <div style="margin-top:14px; display:flex; gap:10px;">
-          <button class="btn small primary" id="createUserBtn">Create account</button>
-          <button class="btn small ghost" id="cancelAddUserBtn">Cancel</button>
-        </div>
-        <div class="login-error" id="addUserError"></div>
-      </div>
 
-      <div id="emailTemplateBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
-        <label class="field-label">Login details email <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(edit before sending)</span></label>
-        <textarea id="emailTemplateBody" style="width:100%; min-height:140px; background:var(--bg-panel); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:10px 12px; font-family:var(--sans); font-size:13px;"></textarea>
-        <div style="margin-top:10px; display:flex; gap:10px;">
-          <a class="btn small primary" id="openMailBtn" href="#" style="text-decoration:none;">Open in email client</a>
-          <button class="btn small ghost" id="closeEmailTemplateBtn">Close</button>
+          <div class="db-scroll" style="max-height:none;">
+            <table class="db-table">
+              <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:230px"></th></tr></thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="note" style="margin-top:10px; padding-top:0; border-top:none;">This only works right after creating or resetting an account — the plaintext password is never stored, so it's only available here for a moment.</div>
-      </div>
 
-      <div class="db-scroll" style="max-height:none;">
-        <table class="db-table">
-          <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:210px"></th></tr></thead>
-          <tbody id="usersTableBody"></tbody>
-        </table>
+        <!-- ---- Activity Log (Admin / Staff) ---- -->
+        <div class="settings-subpanel" id="subpanel-activity">
+          <div class="panel-head"><span class="eyebrow">LOG</span><h2>Activity log</h2></div>
+          <div class="panel-sub">A shared record of every batch processed, by work order — visible to Admin and Staff.</div>
+          <div class="flex-between" style="margin-bottom:10px;" id="logControls">
+            <span style="font-size:12.5px; color:var(--text-dim);"><span id="logCount2">0</span> entries</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn small ghost" id="refreshLogBtn">↻ Refresh</button>
+              <button class="btn small ghost" id="exportLogBtn">Export CSV</button>
+              <button class="btn small ghost danger" id="clearLogBtn">Clear log</button>
+            </div>
+          </div>
+          <div id="logList"></div>
+        </div>
+
+        <!-- ---- Audit Log (Admin / Staff) ---- -->
+        <div class="settings-subpanel" id="subpanel-audit">
+          <div class="panel-head"><span class="eyebrow">AUD</span><h2>Audit log</h2></div>
+          <div class="panel-sub">Every login, account created or removed, and every photo geotagged — with who did it. Rolling 30-day window; older entries age out automatically.</div>
+          <div class="flex-between" style="margin-bottom:10px;">
+            <span style="font-size:12.5px; color:var(--text-dim);"><span id="auditCount2">0</span> entries · <span id="auditRange"></span></span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn small ghost" id="refreshAuditBtn">↻ Refresh</button>
+              <button class="btn small ghost" id="exportAuditCsvBtn">Export CSV</button>
+              <button class="btn small ghost" id="exportAuditZipBtn">Export ZIP</button>
+            </div>
+          </div>
+          <div id="auditList"></div>
+        </div>
+
+        <!-- ---- Email Template (Admin / Staff) ---- -->
+        <div class="settings-subpanel" id="subpanel-emailTemplate">
+          <div class="panel-head"><span class="eyebrow">MAIL</span><h2>Email template</h2></div>
+          <div class="panel-sub">
+            This is what gets prefilled when you click "Email details" after creating or resetting an account. Use
+            <code>{{greetingName}}</code>, <code>{{username}}</code>, <code>{{password}}</code>, <code>{{role}}</code>,
+            <code>{{company}}</code>, and <code>{{loginUrl}}</code> anywhere in the subject or body.
+            <code>{{greetingName}}</code> resolves to the company name for a Trade company-admin account, otherwise
+            the first name if one's on file, otherwise the username.
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Login page URL <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(used for {{loginUrl}} above)</span></label>
+            <input type="text" id="templateLoginUrl" class="mono-input" placeholder="https://yourname.github.io/your-repo/">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Subject</label>
+            <input type="text" id="templateSubject" style="width:100%;">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Body</label>
+            <textarea id="templateBody" style="width:100%; min-height:220px; background:var(--bg-inset); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:10px 12px; font-family:var(--sans); font-size:13px;"></textarea>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn small primary" id="saveTemplateBtn">Save template</button>
+            <button class="btn small ghost" id="resetTemplateBtn">Reset to default</button>
+            <span id="templateSaveStatus" style="font-size:11.5px; color:var(--text-faint);"></span>
+          </div>
+          <div class="note" style="margin-top:16px;">
+            <strong>About the logos:</strong> browser email links (the kind this app uses to open a new message in
+            Outlook) can't carry file attachments or images — that's a restriction of every mail client, not
+            something this app can work around. The reliable way to get both logos to appear at the bottom of every
+            invite is to set them up once as your default signature in Outlook (File &gt; Options &gt; Mail &gt;
+            Signatures, with "Automatically include my signature on new messages" turned on) — Outlook then adds
+            that signature, editable or removable per email, to every new message this app opens for you, these
+            invites included. I've included both logo image files alongside this download so you can drop them
+            straight into a signature.
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
 
-  <!-- ===================== AUDIT LOG TAB (Admin / Staff) ===================== -->
-  <div class="drawer" id="tab-audit">
+  <!-- ===================== SUPPORT TAB (Trade only) ===================== -->
+  <div class="drawer" id="tab-support">
     <div class="panel">
-      <div class="panel-head"><span class="eyebrow">AUD</span><h2>Audit log</h2></div>
-      <div class="panel-sub">Every login, and every photo geotagged — work order, property, coordinates, filename and file type, per image. Rolling 30-day window; older entries age out automatically.</div>
-      <div class="flex-between" style="margin-bottom:10px;">
-        <span style="font-size:12.5px; color:var(--text-dim);"><span id="auditCount2">0</span> entries · <span id="auditRange"></span></span>
-        <div style="display:flex; gap:8px;">
-          <button class="btn small ghost" id="refreshAuditBtn">↻ Refresh</button>
-          <button class="btn small ghost" id="exportAuditCsvBtn">Export CSV</button>
-          <button class="btn small ghost" id="exportAuditZipBtn">Export ZIP</button>
+      <div class="panel-head"><span class="eyebrow">HELP</span><h2>Support &amp; how-to</h2></div>
+      <div class="panel-sub">A walkthrough of everything you can do in Field GeoTag Kit. For login problems or anything account-related, contact your Switched On Housing representative — passwords are only ever reset by an Admin or Staff account.</div>
+
+      <div style="margin-bottom:20px;">
+        <div class="video-embed-wrap">
+          <iframe id="supportVideoFrame" src="" title="Field GeoTag Kit walkthrough" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <div id="supportVideoPlaceholder" class="video-embed-placeholder">
+            No walkthrough video has been added yet — an Admin can set one by editing the <code>SUPPORT_VIDEO_URL</code>
+            constant near the top of this file's &lt;script&gt; (a YouTube "embed" URL works well, including full-screen).
+          </div>
         </div>
       </div>
-      <div id="auditList"></div>
+
+      <div id="supportSteps"></div>
     </div>
   </div>
 
@@ -610,173 +817,19 @@
 
 <script>
 /* =============================================================================
-   FIREBASE SETUP — do this once before deploying:
-   1. Go to https://console.firebase.google.com and create a free project.
-   2. Build > Authentication > Get started > enable "Email/Password".
-      (Accounts use a made-up username, not a real email — see USERNAME LOGIN
-      below for how that works under the hood. You don't need to touch this
-      again after enabling the provider.)
-   3. Build > Firestore Database > Create database (production mode is fine —
-      the security rules below lock it down).
-   4. Project settings (gear icon) > General > "Your apps" > Add app > Web (</>)
-      — copy the firebaseConfig object it gives you into FIREBASE_CONFIG below.
-   5. Authentication > Settings > Authorized domains > add your GitHub Pages
-      domain (e.g. yourorg.github.io) so login works once deployed.
-   6. Firestore Database > Rules > paste this, then Publish:
-        rules_version = '2';
-        service cloud.firestore {
-          match /databases/{database}/documents {
+   SETUP INSTRUCTIONS LIVE IN SETUP.md, NOT HERE.
 
-            function isSignedIn() { return request.auth != null; }
-            function myDoc() {
-              return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-            }
-            function myRole() { return isSignedIn() ? myDoc().role : null; }
-            function isAdmin() { return myRole() == 'admin'; }
-            function isStaffRole() { return myRole() == 'staff'; }
-            function isStaffOrAdmin() { return isStaffRole() || isAdmin(); }
-            // Admin is always both regions; everyone else has an explicit
-            // `regions` array. Staff is scoped to their own region(s) —
-            // NOT a blanket "see everything" role — matching the app's
-            // per-region walling for accounts and properties alike.
-            function myRegions() {
-              return isAdmin() ? ['R07','R10'] : (isSignedIn() ? myDoc().regions : []);
-            }
-            function inMyRegion(listId) { return listId in myRegions(); }
-            function regionsOverlap(targetRegions) { return myRegions().hasAny(targetRegions); }
+   This file is served publicly (GitHub Pages, or wherever you host it) —
+   anyone can view its source. SETUP.md, kept alongside this file in your
+   repo but not linked from the site, has the full Firebase project setup
+   walkthrough, the Firestore security rules to paste in, the account
+   model explanation, and how to bootstrap your first Admin account.
+   Keep real credentials out of this file and out of any comment here —
+   that's the whole reason this got split out.
 
-            match /users/{uid} {
-              allow read: if isSignedIn() && (
-                request.auth.uid == uid ||
-                isAdmin() ||
-                (isStaffRole() && resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
-              );
-              allow create: if isSignedIn() && (
-                isAdmin() ||
-                (isStaffRole() && request.resource.data.role == 'trade' && regionsOverlap(request.resource.data.regions))
-              );
-              allow update: if isSignedIn() && (
-                request.auth.uid == uid ||
-                isAdmin() ||
-                (isStaffRole() && resource.data.role == 'trade' && request.resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
-              );
-              allow delete: if isSignedIn() && (
-                isAdmin() ||
-                (isStaffRole() && resource.data.role == 'trade' && regionsOverlap(resource.data.regions))
-              );
-            }
-
-            match /usernames/{name} {
-              // Used only to check "is this username already taken" before
-              // creating an account, and to look up a user's uid by username.
-              allow read: if isSignedIn();
-              allow write: if isSignedIn() && isStaffOrAdmin();
-            }
-
-            match /property_lists/{listId} {
-              // Trade and Staff can only read regions they're assigned to;
-              // Admin can read either. Only Admin, or Staff assigned to
-              // that specific region, can write (add/edit/upload) to it —
-              // Trade accounts never get write access at all.
-              allow read: if isAdmin() || (isSignedIn() && inMyRegion(listId));
-              allow write: if isAdmin() || (isStaffRole() && inMyRegion(listId));
-              match /chunks/{chunkId} {
-                allow read: if isAdmin() || (isSignedIn() && inMyRegion(listId));
-                allow write: if isAdmin() || (isStaffRole() && inMyRegion(listId));
-              }
-            }
-
-            match /geocode_cache/{code} {
-              allow read, write: if isSignedIn();
-            }
-
-            match /activity_log/{entryId} {
-              allow read: if isStaffOrAdmin();
-              allow create: if isSignedIn();
-              allow update, delete: if isStaffOrAdmin();
-            }
-
-            match /audit_log/{entryId} {
-              allow read: if isStaffOrAdmin();
-              allow create: if isSignedIn();
-              allow update, delete: if isStaffOrAdmin();
-            }
-          }
-        }
-      This enforces real separation between the two trade regions — not
-      just hidden UI — so a signed-in trade user genuinely cannot read
-      the other region's property list, write to any property list at
-      all (only Admin/Staff can add properties), or read the shared
-      activity log, audit log, or other users' accounts, even via direct
-      Firestore calls.
-   7. Firestore Database > Indexes (or "TTL") tab > create a TTL policy on
-      collection "audit_log", field "expiresAt". This is what gives the
-      audit log its rolling 30-day window — Firestore auto-deletes entries
-      once their expiresAt timestamp passes, no client code needed. Deletion
-      typically happens within 24 hours of expiry, not instantly.
-
-   THREE ACCOUNT TYPES — role lives on users/{uid}.role, set only by Admin
-   (or Staff, for trade accounts) at creation time. It is never inferred
-   from a username or email pattern:
-     - "admin"  — full access: create/remove any account (Admin, Staff or
-       Trade), reset any password, everything Staff can do.
-     - "staff"  — can create/remove Trade accounts and reset Trade
-       passwords only; sees both regions' property lists (or merged) and
-       the shared Activity Log and Audit Log; can add, edit, and upload
-       properties; cannot touch other Staff/Admin accounts.
-     - "trade"  — signs in with an Admin/Staff-issued username + password;
-       assigned to exactly one of the two fixed regions (Region 07 —
-       Hawke's Bay, Gisborne, Manawatu — or Region 10 — Christchurch,
-       TOTS) and walled off from the other; read-only view of their
-       region's property list (only Admin/Staff can add or change
-       properties); no access-management UI at all.
-   There is no self-signup — every account is created from the "Users" tab
-   by an existing Admin or Staff account.
-
-   USERNAME LOGIN — Firebase Auth is built around email/password, so under
-   the hood each username is mapped to a fake, never-emailed address of the
-   form "<username>@fieldgeotag.internal" purely so Firebase Auth has
-   something to key on. Nobody needs to know this — the UI only ever shows
-   plain usernames. This is also why the old "Forgot password?" self-service
-   flow is gone: a password-reset email would go nowhere, since that address
-   isn't real. Resets are done by an Admin or Staff from the Users tab
-   instead (see ADMIN PASSWORD RESET below).
-
-   BOOTSTRAPPING THE FIRST ADMIN — the Users tab can only be used by
-   someone who's already an Admin, so the very first Admin account has to
-   be created by hand, once, directly in the Firebase console:
-   1. Authentication > Users > Add user.
-        Email:    kishanp@fieldgeotag.internal
-        Password: kipeeric
-   2. Copy the new user's UID (shown in the Users list after creation).
-   3. Firestore Database > Start collection > collection ID "users" >
-      document ID = that UID, with these fields:
-        username      (string)  = KishanP
-        usernameLower (string)  = kishanp
-        role          (string)  = admin
-        listId        (null)
-        lastListId    (null)
-        createdAt     (timestamp, now)
-        createdBy     (null)
-        lastLoginAt   (null)
-   4. Firestore Database > "usernames" collection > document ID "kishanp",
-      with a single field: uid (string) = that same UID.
-   Sign in with username "KishanP" / password "kipeeric" (not case
-   sensitive) — change this password immediately after first login using
-   the Users tab's "Reset password" on your own account, since it's
-   currently written down in this file.
-
-   ADMIN PASSWORD RESET (optional, needs Cloud Functions + Blaze plan) —
-   creating a NEW account with a chosen password works entirely client-side
-   (see adminCreateUser below) and costs nothing extra. But changing an
-   EXISTING user's password to an Admin-chosen value is something the
-   Firebase client SDK cannot do for anyone other than the currently signed
-   in user — that's an Admin SDK operation, which means a small Cloud
-   Function on the (still effectively free at this scale) Blaze plan. A
-   companion file, functions/index.js, has the deployable function and full
-   deploy instructions. Until that's deployed, "Reset password" in the
-   Users tab will show a clear message instead of failing silently — the
-   rest of the app works fully without it.
+   The one thing that does need to live in this file is the Firebase web
+   config below — that's safe to be public (it's an identifier, not a
+   secret; Firestore security rules are what actually protect your data).
 ============================================================================= */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAt9k9ZABHh_d3s2lvcXaB8OC9L7XLrHxU",
@@ -788,6 +841,12 @@ const FIREBASE_CONFIG = {
 };
 const USERNAME_EMAIL_DOMAIN = 'fieldgeotag.internal'; // fake domain used to key Firebase Auth off usernames instead of real emails
 const AUDIT_LOG_RETENTION_DAYS = 30;
+// Set this to a video "embed" URL (e.g. a YouTube link in the form
+// https://www.youtube.com/embed/VIDEO_ID) to show a walkthrough video on
+// the Trade Support tab, full-screen button included. Leave blank to show
+// a placeholder note instead.
+const SUPPORT_VIDEO_URL = '';
+
 // The two fixed trade regions. Trade accounts belong to exactly one and
 // are walled off from the other's data — both in the UI and for real in
 // the Firestore security rules (a trade account's myListId() only ever
@@ -811,6 +870,10 @@ async function ensureRegionListsExist(){
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// No persistent auto-login: sessions last only for this browser tab. On a
+// shared field device, closing the browser (or the tab) requires signing
+// in again — deliberately, not a bug.
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(e => console.error('setPersistence failed', e));
 let currentUser = null;
 let userProfile = null; // { username, usernameLower, role, listId, lastListId }
 
@@ -837,7 +900,6 @@ const State = {
 };
 let imgIdSeq = 1;
 let autoSaveDirHandle = null;
-const sessionPasswords = new Map(); // uid -> plaintext password, only ever held in memory for this tab, only right after create/reset
 
 /* ============================= LOCAL FOLDER-HANDLE STORAGE =============================
    The auto-save folder is a native browser permission tied to one device —
@@ -886,42 +948,14 @@ function idbDelete(store, key){
 }
 
 /* ============================= AUTH ============================= */
-/* "Remember my login" — an OPT-IN convenience for shared field devices
-   where the same trade worker signs in repeatedly. When checked, the
-   username and password are stored in this browser's localStorage (not
-   Firestore, not synced anywhere) purely to prefill the form next time —
-   both fields stay fully editable, so a different worker on the same
-   device just types over them. Unticking the box and signing in again
-   clears whatever was remembered. This trades a small amount of
-   plaintext-on-device risk for convenience — appropriate for a
-   single-purpose field tool, but worth knowing: anyone with access to
-   this browser profile could read it via dev tools. */
-const REMEMBER_LOGIN_KEY = 'geotag-remembered-login';
-function loadRememberedLogin(){
-  try{
-    const raw = localStorage.getItem(REMEMBER_LOGIN_KEY);
-    return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
-}
-function saveRememberedLogin(username, password){
-  try{ localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({ username, password })); }catch(e){}
-}
-function clearRememberedLogin(){
-  try{ localStorage.removeItem(REMEMBER_LOGIN_KEY); }catch(e){}
-}
-
+/* No "remember me" and no persistent auto-login: auth.setPersistence(SESSION)
+   below means a sign-in only lasts for that browser tab — closing the
+   browser (or the tab) requires signing in again next time. This is
+   deliberate for a tool used on shared field devices. */
 function bindAuthForm(){
   const submitBtn = document.getElementById('loginSubmitBtn');
   const errorBox = document.getElementById('loginError');
   const form = document.getElementById('loginForm');
-  const rememberCheck = document.getElementById('rememberLoginCheck');
-
-  const remembered = loadRememberedLogin();
-  if(remembered){
-    document.getElementById('loginUsername').value = remembered.username || '';
-    document.getElementById('loginPassword').value = remembered.password || '';
-    rememberCheck.checked = true;
-  }
 
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
@@ -932,8 +966,6 @@ function bindAuthForm(){
     const password = document.getElementById('loginPassword').value;
     try{
       await auth.signInWithEmailAndPassword(usernameToEmail(username.toLowerCase()), password);
-      if(rememberCheck.checked) saveRememberedLogin(username, password);
-      else clearRememberedLogin();
     }catch(err){
       errorBox.textContent = friendlyAuthError(err);
     }
@@ -1003,11 +1035,15 @@ function sanitizeListId(raw){
 }
 
 function updateRoleUI(){
-  const usersBtn = document.getElementById('usersTabBtn');
-  const auditBtn = document.getElementById('auditTabBtn');
   const show = isStaffOrAdmin();
-  usersBtn.style.display = show ? '' : 'none';
-  auditBtn.style.display = show ? '' : 'none';
+  document.getElementById('settingsNavUsers').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavActivity').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavAudit').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavEmailTemplate').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavAdminDivider').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavCompression').style.display = isStaffOrAdmin() ? 'none' : '';
+  document.getElementById('supportTabBtn').style.display = isStaffOrAdmin() ? 'none' : '';
+
   document.getElementById('usersPanelTitle').textContent = isAdmin() ? 'Users' : 'Trade users';
   document.getElementById('usersPanelSub').textContent = isAdmin()
     ? 'Add and manage any account — Admin, Staff or Trade. There\'s no self-signup; every account is created here.'
@@ -1025,6 +1061,79 @@ function updateRoleUI(){
   document.getElementById('dbPanelSub').textContent = show
     ? 'Each region has its own property list. Update the active region by uploading an Excel/CSV file, or edit rows directly below.'
     : 'This is your region\'s property list, kept up to date by Admin and Staff. Trade accounts can search and export it, but only Admin and Staff can add, upload, or remove properties.';
+
+  renderMyAccountBox();
+}
+
+/* ============================= THEME (light / dark) ============================= */
+function loadTheme(){
+  try{ return localStorage.getItem('geotag-theme') || 'dark'; }catch(e){ return 'dark'; }
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+  const check = document.getElementById('themeToggleCheck');
+  if(check) check.checked = theme === 'light';
+  try{ localStorage.setItem('geotag-theme', theme); }catch(e){}
+}
+function bindThemeToggle(){
+  applyTheme(loadTheme());
+  document.getElementById('themeToggleCheck').addEventListener('change', (e)=>{
+    applyTheme(e.target.checked ? 'light' : 'dark');
+  });
+}
+
+/* ============================= SETTINGS SUB-NAV ============================= */
+function bindSettingsNav(){
+  document.querySelectorAll('.settings-nav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if(btn.style.display === 'none') return;
+      document.querySelectorAll('.settings-nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.settings-subpanel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = document.getElementById('subpanel-' + btn.dataset.subtab);
+      if(panel) panel.classList.add('active');
+    });
+  });
+}
+
+/* ============================= MY ACCOUNT ============================= */
+function renderMyAccountBox(){
+  const box = document.getElementById('myAccountBox');
+  if(!box || !userProfile) return;
+  const rows = [];
+  rows.push(['Username', escapeHtml(userProfile.username || '—')]);
+  if(userProfile.password){
+    rows.push(['Password', `<span class="reveal-password"><span class="mono-input" id="myPasswordText" style="display:inline-block; padding:4px 10px; letter-spacing:2px;">••••••••</span><button type="button" id="myPasswordToggle">Show</button></span>`]);
+  }
+  rows.push(['Role', roleLabel(userProfile.role)]);
+  if(userProfile.role === 'admin'){
+    rows.push(['Region', 'All Regions']);
+  } else {
+    rows.push(['Region', escapeHtml(regionsLabel(myRegions()))]);
+  }
+  if(userProfile.role === 'trade'){
+    if(userProfile.companyName) rows.push(['Company', escapeHtml(userProfile.companyName) + (userProfile.isCompanyAdmin ? ' (Company admin)' : '')]);
+    if(userProfile.mobile) rows.push(['Mobile', escapeHtml(userProfile.mobile)]);
+    if(userProfile.email) rows.push(['Email', escapeHtml(userProfile.email)]);
+  } else {
+    const fullName = [userProfile.firstName, userProfile.lastName].filter(Boolean).join(' ');
+    if(fullName) rows.push(['Name', escapeHtml(fullName)]);
+  }
+  box.innerHTML = rows.map(([label, val]) => `
+    <div class="account-detail-row">
+      <span class="account-detail-label">${label}</span>
+      <span class="account-detail-value">${val}</span>
+    </div>
+  `).join('');
+  const toggle = document.getElementById('myPasswordToggle');
+  if(toggle){
+    toggle.addEventListener('click', ()=>{
+      const el = document.getElementById('myPasswordText');
+      const revealed = el.textContent !== '••••••••';
+      el.textContent = revealed ? '••••••••' : userProfile.password;
+      toggle.textContent = revealed ? 'Show' : 'Hide';
+    });
+  }
 }
 
 auth.onAuthStateChanged(async (user)=>{
@@ -1215,6 +1324,7 @@ async function loadAllData(){
     await renderUsersTab();
     State.auditLog = await loadAuditLog();
     renderAuditLog();
+    await renderEmailTemplateSubpanel();
   }
 }
 
@@ -1222,16 +1332,15 @@ async function loadAllData(){
    Creating a new account works entirely client-side: a second, isolated
    Firebase App instance signs up the new user (so it never hijacks the
    admin's own session), then the admin's primary session writes the
-   users/{uid} and usernames/{name} Firestore docs. The chosen plaintext
-   password is only ever kept in the sessionPasswords Map above — never
-   written to Firestore — so "Email login details" only works right after
-   a create or reset, in that same browser tab.
+   users/{uid} and usernames/{name} Firestore docs — including the
+   plaintext password, per an explicit product decision so Admin/Staff/
+   Trade can view credentials in Settings. See the security trade-off note
+   in SETUP.md before relying on this.
 
    Resetting an EXISTING account's password to an admin-chosen value is not
    something the Firebase client SDK can do for anyone other than yourself
-   — see the "ADMIN PASSWORD RESET" note near the top of this file. That
-   path calls an optional Cloud Function; until it's deployed, the button
-   explains why instead of failing silently.
+   — that still requires the optional Cloud Function (see SETUP.md); until
+   it's deployed, the button explains why instead of failing silently.
 */
 function generateRandomPassword(len){
   len = len || 10;
@@ -1241,7 +1350,16 @@ function generateRandomPassword(len){
   return Array.from(arr, n => chars[n % chars.length]).join('');
 }
 
-async function adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email }){
+// Who an invite email should greet: the company name for a Trade
+// "company admin" account, otherwise a first name if one's on file,
+// otherwise fall back to the username.
+function computeGreetingName(u){
+  if(u.role === 'trade' && u.isCompanyAdmin && u.companyName) return u.companyName;
+  if(u.firstName) return u.firstName;
+  return u.username;
+}
+
+async function adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin }){
   const uname = (username || '').trim();
   const usernameLower = uname.toLowerCase();
   if(!/^[a-z0-9._-]{3,32}$/.test(usernameLower)){
@@ -1256,10 +1374,16 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
   if(!isAdmin() && role !== 'trade'){
     throw new Error('Staff can only create Trade accounts.');
   }
+  if((role === 'admin' || role === 'staff') && !(firstName || '').trim()){
+    throw new Error('First name is required for Admin and Staff accounts.');
+  }
+  if((role === 'admin' || role === 'staff') && !(lastName || '').trim()){
+    throw new Error('Last name is required for Admin and Staff accounts.');
+  }
 
   // Resolve the chosen region(s). Admin is always both, implicitly.
   let regions = role === 'admin' ? ALL_REGION_IDS.slice() : (regionsPick === 'BOTH' ? ALL_REGION_IDS.slice() : (regionsPick ? [regionsPick] : []));
-  if(!isAdmin() && role !== 'admin'){
+  if(!isAdmin()){
     // Staff can only assign accounts within their own region(s).
     const own = myRegions();
     const outside = regions.filter(r => !own.includes(r));
@@ -1272,10 +1396,11 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
   if(role === 'trade'){
     companyNameTrim = (companyName || '').trim();
     if(!companyNameTrim){
-      throw new Error('Company name is required for Trade accounts.');
+      throw new Error('Company is required for Trade accounts.');
     }
   }
 
+  // All usernames are unique, checked here before creating anything.
   const nameRef = db.collection('usernames').doc(usernameLower);
   const nameSnap = await nameRef.get();
   if(nameSnap.exists){
@@ -1296,9 +1421,16 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
     username: uname, usernameLower, role,
     regions,
     lastListId: initialActive,
+    firstName: (role === 'admin' || role === 'staff') ? (firstName || '').trim() : ((firstName || '').trim() || null),
+    lastName: (role === 'admin' || role === 'staff') ? (lastName || '').trim() : null,
     companyName: role === 'trade' ? companyNameTrim : null,
+    isCompanyAdmin: role === 'trade' ? !!isCompanyAdmin : false,
     mobile: role === 'trade' ? (mobile || '').trim() : null,
     email: role === 'trade' ? (email || '').trim() : null,
+    // Stored so Admin/Staff/Trade can view it in Settings, per a deliberate
+    // (and explicitly flagged) product decision — see the security note in
+    // SETUP.md for what this trades away.
+    password,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     createdBy: currentUser ? currentUser.uid : null,
     createdByUsername: userProfile ? userProfile.username : null,
@@ -1306,7 +1438,16 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
   });
   await nameRef.set({ uid, role });
 
-  sessionPasswords.set(uid, password);
+  addAuditLogEntry({
+    type: 'account_created',
+    uid: currentUser ? currentUser.uid : null,
+    username: userProfile ? userProfile.username : 'unknown',
+    role: userProfile ? userProfile.role : null,
+    targetUid: uid,
+    targetUsername: uname,
+    targetRole: role
+  });
+
   return { uid, username: uname };
 }
 
@@ -1317,11 +1458,14 @@ async function resetUserPassword(uid, username){
     await callable({ uid, newPassword });
   }catch(e){
     console.error('adminResetPassword failed', e);
-    toast('Password reset needs the optional Cloud Function deployed first — see the "ADMIN PASSWORD RESET" note near the top of this file (functions/index.js).', 'err');
+    toast('Password reset needs the optional Cloud Function deployed first — see SETUP.md / functions/index.js.', 'err');
     return;
   }
-  sessionPasswords.set(uid, newPassword);
-  openEmailTemplate(username, newPassword);
+  try{
+    await db.collection('users').doc(uid).set({ password: newPassword }, { merge: true });
+  }catch(e){
+    console.error('Could not save the new password to the account record', e);
+  }
   toast(`Password reset for "${username}"`, 'ok');
   await renderUsersTab();
 }
@@ -1331,7 +1475,6 @@ async function removeUser(uid, usernameLower, username, role){
   try{
     await db.collection('users').doc(uid).delete();
     if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
-    sessionPasswords.delete(uid);
 
     // Record the deletion itself in the audit log — kept forever like every
     // other audit entry (subject to the normal 30-day TTL), even though the
@@ -1362,36 +1505,127 @@ async function removeUser(uid, usernameLower, username, role){
   }
 }
 
-function openEmailTemplate(username, password){
+/* ============================= EMAIL INVITE TEMPLATE ============================= */
+const DEFAULT_EMAIL_TEMPLATE = {
+  loginUrl: 'https://kishanpeiris.github.io/Geo_Tag/',
+  subject: 'Your Field GeoTag Kit login — Switched On Housing',
+  body: `Hi {{greetingName}},
+
+Switched On Housing is inviting you to log in to Field GeoTag Kit, our property photo geotagging tool.
+
+Username: {{username}}
+Password: {{password}}
+
+Sign in here: {{loginUrl}}
+
+Please keep these details somewhere safe.
+
+Thanks,
+Switched On Housing`
+};
+let emailTemplateCache = null;
+
+async function loadEmailTemplate(){
+  if(emailTemplateCache) return emailTemplateCache;
+  try{
+    const snap = await db.collection('settings').doc('email_template').get();
+    emailTemplateCache = snap.exists ? Object.assign({}, DEFAULT_EMAIL_TEMPLATE, snap.data()) : Object.assign({}, DEFAULT_EMAIL_TEMPLATE);
+  }catch(e){
+    emailTemplateCache = Object.assign({}, DEFAULT_EMAIL_TEMPLATE);
+  }
+  return emailTemplateCache;
+}
+
+function fillTemplate(str, tokens){
+  return (str || '').replace(/\{\{(\w+)\}\}/g, (m, key) => (tokens[key] != null ? tokens[key] : ''));
+}
+
+async function openEmailTemplate(user, password){
+  const tpl = await loadEmailTemplate();
+  const tokens = {
+    greetingName: computeGreetingName(user),
+    username: user.username,
+    password: password,
+    role: roleLabel(user.role),
+    company: user.companyName || '',
+    loginUrl: tpl.loginUrl || DEFAULT_EMAIL_TEMPLATE.loginUrl
+  };
   const box = document.getElementById('emailTemplateBox');
   const body = document.getElementById('emailTemplateBody');
-  body.value = `Hi ${username},\n\nHere are your Field GeoTag Kit login details:\n\nUsername: ${username}\nPassword: ${password}\n\nSign in at: [add your GitHub Pages link here]\n\nPlease keep this somewhere safe.`;
+  body.value = fillTemplate(tpl.body, tokens);
+  box.dataset.subject = fillTemplate(tpl.subject, tokens);
   box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   document.getElementById('openMailBtn').onclick = (e)=>{
     e.preventDefault();
-    const subject = encodeURIComponent('Your Field GeoTag Kit login');
-    window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(body.value)}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(box.dataset.subject || '')}&body=${encodeURIComponent(body.value)}`;
   };
+}
+
+function bindEmailTemplateTab(){
+  document.getElementById('saveTemplateBtn').addEventListener('click', async ()=>{
+    const tpl = {
+      loginUrl: document.getElementById('templateLoginUrl').value.trim(),
+      subject: document.getElementById('templateSubject').value,
+      body: document.getElementById('templateBody').value
+    };
+    const status = document.getElementById('templateSaveStatus');
+    try{
+      await db.collection('settings').doc('email_template').set(tpl, { merge: true });
+      emailTemplateCache = Object.assign({}, DEFAULT_EMAIL_TEMPLATE, tpl);
+      status.textContent = 'Saved.';
+      setTimeout(()=>{ status.textContent = ''; }, 2500);
+    }catch(e){
+      status.style.color = 'var(--red)';
+      status.textContent = 'Could not save: ' + e.message;
+    }
+  });
+  document.getElementById('resetTemplateBtn').addEventListener('click', ()=>{
+    document.getElementById('templateLoginUrl').value = DEFAULT_EMAIL_TEMPLATE.loginUrl;
+    document.getElementById('templateSubject').value = DEFAULT_EMAIL_TEMPLATE.subject;
+    document.getElementById('templateBody').value = DEFAULT_EMAIL_TEMPLATE.body;
+  });
+}
+
+async function renderEmailTemplateSubpanel(){
+  if(!isStaffOrAdmin()) return;
+  const tpl = await loadEmailTemplate();
+  document.getElementById('templateLoginUrl').value = tpl.loginUrl || DEFAULT_EMAIL_TEMPLATE.loginUrl;
+  document.getElementById('templateSubject').value = tpl.subject || DEFAULT_EMAIL_TEMPLATE.subject;
+  document.getElementById('templateBody').value = tpl.body || DEFAULT_EMAIL_TEMPLATE.body;
 }
 
 async function loadUsersList(){
   try{
     let snap;
     if(isAdmin()) snap = await db.collection('users').orderBy('username').get();
-    else snap = await db.collection('users').where('role', '==', 'trade').get();
-    let users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    if(!isAdmin()){
-      // Staff only sees Trade accounts whose region(s) overlap their own.
+    else {
+      // Staff sees other Staff accounts, plus Trade accounts (region-filtered below).
+      const [staffSnap, tradeSnap] = await Promise.all([
+        db.collection('users').where('role', '==', 'staff').get(),
+        db.collection('users').where('role', '==', 'trade').get()
+      ]);
+      const staffUsers = staffSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      let tradeUsers = tradeSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
       const own = myRegions();
-      users = users.filter(u => accountRegions(u).some(r => own.includes(r)));
+      tradeUsers = tradeUsers.filter(u => accountRegions(u).some(r => own.includes(r)));
+      return staffUsers.concat(tradeUsers).sort((a,b)=> (a.username||'').localeCompare(b.username||''));
     }
-    return users;
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   }catch(e){
     console.error('loadUsersList failed', e);
     toast('Could not load users: ' + e.message, 'err');
     return [];
   }
+}
+
+// Who's allowed to see a given account's password: Admin sees everyone's;
+// Staff sees other Staff's and Trade's (not Admin's); everyone sees their
+// own regardless (handled separately, in My Account).
+function canViewPassword(targetRole){
+  if(isAdmin()) return true;
+  if(isStaffRole()) return targetRole === 'staff' || targetRole === 'trade';
+  return false;
 }
 
 function populateRegionPicker(selectEl, allowedRegionIds){
@@ -1401,47 +1635,90 @@ function populateRegionPicker(selectEl, allowedRegionIds){
   selectEl.innerHTML = opts + bothOpt;
 }
 
+let usersListCache = [];
+let usersFilterValue = 'all';
+
+function usersRowsForExport(users){
+  return users.map(u => ({
+    'Username': u.username || '', 'Role': roleLabel(u.role), 'Region': regionsLabel(accountRegions(u)),
+    'Status': u.lastLoginAt ? 'Active' : 'Pending',
+    'First name': u.firstName || '', 'Last name': u.lastName || '',
+    'Company': u.companyName || '', 'Company admin': u.isCompanyAdmin ? 'Yes' : '',
+    'Mobile': u.mobile || '', 'Email': u.email || ''
+  }));
+}
+
 async function renderUsersTab(){
   // Admin can assign any region; Staff can only assign within their own.
   const allowedRegionIds = isAdmin() ? ALL_REGION_IDS : myRegions();
   populateRegionPicker(document.getElementById('newUserList'), allowedRegionIds);
 
-  const users = await loadUsersList();
-  document.getElementById('usersCount').textContent = users.length;
+  usersListCache = await loadUsersList();
+  document.getElementById('usersCount').textContent = usersListCache.length;
+
+  // Keep the company dropdown current (distinct company names seen so far).
+  const companies = Array.from(new Set(usersListCache.filter(u=>u.role==='trade' && u.companyName).map(u=>u.companyName))).sort();
+  const companySel = document.getElementById('newUserCompanySelect');
+  const prevVal = companySel.value;
+  companySel.innerHTML = companies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')
+    + `<option value="__NEW__">+ New company…</option>`;
+  companySel.value = companies.includes(prevVal) ? prevVal : (companies[0] || '__NEW__');
+  document.getElementById('newUserCompany').style.display = companySel.value === '__NEW__' ? '' : 'none';
+
+  renderUsersTable();
+}
+
+function renderUsersTable(){
+  const users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
   document.getElementById('usersCount2').textContent = users.length;
 
   const body = document.getElementById('usersTableBody');
   if(!users.length){
-    body.innerHTML = '<tr><td colspan="5"><div class="empty-state">No accounts yet — add one above.</div></td></tr>';
+    body.innerHTML = '<tr><td colspan="5"><div class="empty-state">No accounts match this filter.</div></td></tr>';
     return;
   }
   body.innerHTML = users.map(u => {
     const canManage = isAdmin() || u.role === 'trade';
     const isSelf = currentUser && u.uid === currentUser.uid;
     const active = !!u.lastLoginAt;
-    const hasPw = sessionPasswords.has(u.uid);
+    const showPw = canViewPassword(u.role) && u.password;
     const contactBits = [];
     if(u.role === 'trade'){
-      if(u.companyName) contactBits.push(escapeHtml(u.companyName));
+      if(u.companyName) contactBits.push(escapeHtml(u.companyName) + (u.isCompanyAdmin ? ' (admin)' : ''));
       if(u.mobile) contactBits.push(escapeHtml(u.mobile));
       if(u.email) contactBits.push(escapeHtml(u.email));
+    } else {
+      const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ');
+      if(fullName) contactBits.push(escapeHtml(fullName));
     }
     return `
     <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
-      <td>${escapeHtml(u.username || '—')}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}</td>
+      <td>${escapeHtml(u.username || '—')}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
+        ${showPw ? `<div class="reveal-password" style="margin-top:4px;"><span class="mono-input" data-pwtext style="display:inline-block; padding:2px 8px; font-size:11px;">••••••••</span><button type="button" data-act="togglepw">Show</button></div>` : ''}
+      </td>
       <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
       <td>${escapeHtml(regionsLabel(accountRegions(u)))}</td>
       <td><span class="status-pill ${active?'active':'pending'}"><span class="dot"></span>${active?'Active':'Pending'}</span></td>
       <td>
         <div class="user-actions">
           ${canManage ? `<button class="btn small ghost" data-act="reset">Reset password</button>` : ''}
-          ${hasPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
+          ${showPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
           ${canManage && !isSelf ? `<button class="btn small ghost danger" data-act="remove">Remove</button>` : ''}
         </div>
       </td>
     </tr>`;
   }).join('');
 
+  body.querySelectorAll('[data-act="togglepw"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tr = btn.closest('tr');
+      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
+      const el = tr.querySelector('[data-pwtext]');
+      const revealed = el.textContent !== '••••••••';
+      el.textContent = revealed ? '••••••••' : (u ? u.password : '');
+      btn.textContent = revealed ? 'Show' : 'Hide';
+    });
+  });
   body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const tr = btn.closest('tr');
@@ -1451,7 +1728,8 @@ async function renderUsersTab(){
   body.querySelectorAll('[data-act="email"]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const tr = btn.closest('tr');
-      openEmailTemplate(tr.dataset.username, sessionPasswords.get(tr.dataset.uid));
+      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
+      if(u) openEmailTemplate(u, u.password);
     });
   });
   body.querySelectorAll('[data-act="remove"]').forEach(btn=>{
@@ -1466,7 +1744,9 @@ function updateAddUserFormVisibility(){
   const role = isAdmin() ? document.getElementById('newUserRole').value : 'trade';
   document.getElementById('newUserListBox').style.display = role === 'admin' ? 'none' : '';
   document.getElementById('newUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
-  document.getElementById('newUserEmail').closest('.row').style.display = role === 'trade' ? '' : 'none';
+  document.getElementById('newUserEmailRow').style.display = role === 'trade' ? '' : 'none';
+  document.getElementById('newUserLastNameBox').style.display = role === 'trade' ? 'none' : '';
+  document.getElementById('newUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
 }
 
 function bindUsersTab(){
@@ -1476,9 +1756,12 @@ function bindUsersTab(){
     document.getElementById('addUserError').textContent = '';
     document.getElementById('newUserUsername').value = '';
     document.getElementById('newUserPassword').value = '';
+    document.getElementById('newUserFirstName').value = '';
+    document.getElementById('newUserLastName').value = '';
     document.getElementById('newUserCompany').value = '';
     document.getElementById('newUserMobile').value = '';
     document.getElementById('newUserEmail').value = '';
+    document.getElementById('newUserCompanyAdmin').checked = false;
     updateAddUserFormVisibility();
   });
   document.getElementById('cancelAddUserBtn').addEventListener('click', ()=>{
@@ -1488,6 +1771,19 @@ function bindUsersTab(){
     document.getElementById('newUserPassword').value = generateRandomPassword();
   });
   document.getElementById('newUserRole').addEventListener('change', updateAddUserFormVisibility);
+  document.getElementById('newUserCompanySelect').addEventListener('change', (e)=>{
+    document.getElementById('newUserCompany').style.display = e.target.value === '__NEW__' ? '' : 'none';
+    if(e.target.value !== '__NEW__') document.getElementById('newUserCompany').value = '';
+  });
+  document.getElementById('usersFilterSelect').addEventListener('change', (e)=>{
+    usersFilterValue = e.target.value;
+    renderUsersTable();
+  });
+  document.getElementById('exportUsersBtn').addEventListener('click', ()=>{
+    const users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
+    const csv = Papa.unparse(usersRowsForExport(users));
+    downloadText(csv, `users_${usersFilterValue}_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
+  });
   document.getElementById('createUserBtn').addEventListener('click', async ()=>{
     const errBox = document.getElementById('addUserError');
     errBox.textContent = '';
@@ -1495,15 +1791,19 @@ function bindUsersTab(){
     const password = document.getElementById('newUserPassword').value;
     const role = isAdmin() ? document.getElementById('newUserRole').value : 'trade';
     const regionsPick = document.getElementById('newUserList').value;
-    const companyName = document.getElementById('newUserCompany').value;
+    const companySel = document.getElementById('newUserCompanySelect').value;
+    const companyName = role === 'trade' ? (companySel === '__NEW__' ? document.getElementById('newUserCompany').value : companySel) : '';
     const mobile = document.getElementById('newUserMobile').value;
     const email = document.getElementById('newUserEmail').value;
+    const firstName = document.getElementById('newUserFirstName').value;
+    const lastName = document.getElementById('newUserLastName').value;
+    const isCompanyAdmin = document.getElementById('newUserCompanyAdmin').checked;
     const btn = document.getElementById('createUserBtn');
     btn.disabled = true;
     try{
-      const { username: uname } = await adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email });
+      const { uid, username: uname } = await adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin });
       document.getElementById('addUserBox').style.display = 'none';
-      openEmailTemplate(uname, password);
+      openEmailTemplate({ username: uname, role, companyName, isCompanyAdmin, firstName }, password);
       toast(`Account "${uname}" created`, 'ok');
       await renderUsersTab();
     }catch(err){
@@ -1570,6 +1870,12 @@ function fmtAuditEntry(e){
       <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) removed "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})</div>
     </div>`;
   }
+  if(e.type === 'account_created'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind created">Account created</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) created "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})</div>
+    </div>`;
+  }
   return `<div class="audit-item">
     <div class="top-row"><span class="kind geotag">Geotag</span><span class="ts">${ts}</span></div>
     <div class="detail">${escapeHtml(e.username||'unknown')} · ${escapeHtml(e.wo||'')} — ${escapeHtml(e.propertyId||'')} · ${e.lat!=null?e.lat.toFixed(6):''}, ${e.lon!=null?e.lon.toFixed(6):''} · ${escapeHtml(e.filename||'')} (${escapeHtml((e.fileType||'').toUpperCase())}) · ${escapeHtml(e.listId||'—')}</div>
@@ -1594,7 +1900,7 @@ function auditRowsForExport(){
     'Username': e.username||'', 'Role': e.role||'', 'Work Order': e.wo||'', 'Property ID': e.propertyId||'',
     'Address': e.address||'', 'Latitude': e.lat!=null?e.lat:'', 'Longitude': e.lon!=null?e.lon:'',
     'Filename': e.filename||'', 'File Type': e.fileType||'', 'List': e.listId||'',
-    'Removed Username': e.targetUsername||'', 'Removed Role': e.targetRole||''
+    'Target Username': e.targetUsername||'', 'Target Role': e.targetRole||''
   }));
 }
 function bindAuditTab(){
@@ -1619,6 +1925,7 @@ function bindAuditTab(){
 
 /* ============================= INIT ============================= */
 function init(){
+  applyTheme(loadTheme());
   bindAuthForm();
   bindEvents();
   document.getElementById('listAssignConfirmBtn').addEventListener('click', async ()=>{
@@ -1658,6 +1965,9 @@ function bindTabs(){
       document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('show'));
       btn.classList.add('active');
       document.getElementById('tab-'+btn.dataset.tab).classList.add('show');
+      if(btn.dataset.tab === 'main' && propertyMapInstance){
+        setTimeout(()=> propertyMapInstance.invalidateSize(), 80);
+      }
     });
   });
 }
@@ -1764,6 +2074,46 @@ function updateStamp(statusOverride){
     <span class="label">Address</span> ${escapeHtml(p.address)}<br>
     <span class="label">Coords</span> ${statusOverride ? statusOverride : (lat && lon ? `<b>${lat}, ${lon}</b>` : 'not set')}
   `;
+  syncMapFromFields();
+}
+
+/* ============================= PROPERTY MAP (Leaflet, no API key needed) =============================
+   Shows the currently resolved coordinates with a draggable pin — dragging
+   it updates the Latitude/Longitude fields directly, same as typing into
+   them. Uses OpenStreetMap tiles, which are free and don't need any API
+   key or billing account, unlike Google Maps. */
+let propertyMapInstance = null;
+let propertyMapMarker = null;
+function ensurePropertyMap(){
+  if(propertyMapInstance) return propertyMapInstance;
+  propertyMapInstance = L.map('propertyMap', { attributionControl: true }).setView([-41.2, 174.8], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(propertyMapInstance);
+  propertyMapMarker = L.marker([-41.2, 174.8], { draggable: true }).addTo(propertyMapInstance);
+  propertyMapMarker.on('dragend', ()=>{
+    const pos = propertyMapMarker.getLatLng();
+    document.getElementById('latField').value = pos.lat.toFixed(6);
+    document.getElementById('lonField').value = pos.lng.toFixed(6);
+    updateStamp();
+    updateProcessBtn();
+  });
+  return propertyMapInstance;
+}
+function syncMapFromFields(){
+  const latEl = document.getElementById('latField');
+  const lonEl = document.getElementById('lonField');
+  if(!latEl || !lonEl) return;
+  const lat = parseFloat(latEl.value);
+  const lon = parseFloat(lonEl.value);
+  if(isNaN(lat) || isNaN(lon)) return;
+  const map = ensurePropertyMap();
+  propertyMapMarker.setLatLng([lat, lon]);
+  map.setView([lat, lon], 17);
+  // Leaflet needs a nudge if the container had no real size when the map
+  // was first created (e.g. a parent tab was hidden at the time).
+  setTimeout(()=> map.invalidateSize(), 80);
 }
 
 /* ============================= ADDRESS NORMALIZATION ============================= */
@@ -2150,8 +2500,134 @@ function uniqueName(name, usedSet){
   return n;
 }
 
-// Tags every selected image (JPEGs get real GPS EXIF; other formats pass
-// through unchanged) and returns [{name, blob}], reporting progress via cb.
+/* ============================= IMAGE COMPRESSION / CONVERSION =============================
+   Phone photos (especially HDR) commonly come in at 3-5MB+. We don't need
+   the HDR detail for property documentation — just a clear photo with
+   accurate GPS data — so images are re-encoded through a canvas at a
+   sensible resolution and JPEG quality before the GPS EXIF tag is written.
+   Writing the location AFTER compression (not before) is what guarantees
+   the coordinates always survive — compression happens first, tagging
+   happens last, every time, regardless of whether compression is on.
+   Trade accounts can turn compression off in Settings if they'd rather
+   keep full-resolution originals; it defaults to on.
+*/
+const COMPRESS_MAX_DIMENSION = 2400; // long-edge pixels — plenty for property documentation photos
+const COMPRESS_JPEG_QUALITY = 0.82;   // visually near-lossless at this resolution, big size win
+
+function loadCompressionSetting(){
+  try{
+    const raw = localStorage.getItem('geotag-compress-enabled');
+    return raw === null ? true : raw === 'true';
+  }catch(e){ return true; }
+}
+function saveCompressionSetting(enabled){
+  try{ localStorage.setItem('geotag-compress-enabled', enabled ? 'true' : 'false'); }catch(e){}
+}
+let compressionEnabled = loadCompressionSetting();
+function bindCompressionToggle(){
+  const check = document.getElementById('compressToggle');
+  check.checked = compressionEnabled;
+  check.addEventListener('change', (e)=>{
+    compressionEnabled = e.target.checked;
+    saveCompressionSetting(compressionEnabled);
+  });
+}
+
+/* ============================= SUPPORT TAB (Trade only) ============================= */
+const SUPPORT_STEPS = [
+  { title: 'Sign in', body: 'Use the username and password your Admin or Staff manager gave you. If you\'ve forgotten either, contact your Switched On Housing representative — only an Admin or Staff account can reset a password.' },
+  { title: 'Pick a job', body: 'On the Job tab, start typing a work order number and property ID or address — matching properties from your region\'s database appear as you type. Select one, or type the details manually if it\'s not in the list.' },
+  { title: 'Check the location', body: 'The property\'s coordinates are looked up automatically. If they look wrong, you can edit the latitude/longitude fields directly before tagging any photos.' },
+  { title: 'Add your photos', body: 'Drag and drop photos (or a whole folder) onto the upload area, or use the file picker. Thumbnails appear below — tap any photo to include or exclude it from this batch.' },
+  { title: 'Apply the location', body: 'Once you\'re happy with the work order, property, and selected photos, click "Apply location & save to folder" (writes tagged files straight to a folder on your device) or "Apply location & download ZIP" (bundles them into one file). Photos are automatically compressed and converted to JPEG first, unless you\'ve turned that off in Settings.' },
+  { title: 'Browse the property list', body: 'The Property DB tab shows every property in your assigned region(s). You can search and export it, but only Admin and Staff can add, edit, or upload new properties.' },
+  { title: 'Check your account details', body: 'The Settings tab (My Account) shows your username, password, company, and region — useful if you ever need to double check what was set up for you.' }
+];
+function bindSupportTab(){
+  const list = document.getElementById('supportSteps');
+  if(list) list.innerHTML = SUPPORT_STEPS.map((s, i) => `
+    <div class="support-step">
+      <div class="num">${i+1}</div>
+      <div class="body"><h4>${escapeHtml(s.title)}</h4><p>${escapeHtml(s.body)}</p></div>
+    </div>
+  `).join('');
+
+  const frame = document.getElementById('supportVideoFrame');
+  const placeholder = document.getElementById('supportVideoPlaceholder');
+  if(SUPPORT_VIDEO_URL){
+    frame.src = SUPPORT_VIDEO_URL;
+    frame.style.display = 'block';
+    placeholder.style.display = 'none';
+  }
+}
+
+function isHeicFile(file){
+  return /image\/hei[cf]/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+}
+
+// iPhones often save photos as HEIC, which browsers can't decode natively.
+// heic2any (loaded via CDN, runs entirely in-browser) converts it to a
+// normal JPEG blob first so the rest of the pipeline can treat it like any
+// other photo.
+async function maybeConvertHeic(file){
+  if(!isHeicFile(file)) return file;
+  if(typeof heic2any === 'undefined'){
+    throw new Error('HEIC photos need the heic2any library, which didn\'t load (check your internet connection) — try again, or set your phone\'s camera to save as JPEG instead (Settings > Camera > Formats > Most Compatible on iPhone).');
+  }
+  const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  const outBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+  return new File([outBlob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+}
+
+function loadImageSource(file){
+  if('createImageBitmap' in window){
+    return createImageBitmap(file).catch(()=> loadImageSourceViaImgTag(file));
+  }
+  return loadImageSourceViaImgTag(file);
+}
+function loadImageSourceViaImgTag(file){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{ URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = (e)=>{ URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+// Re-encodes any browser-decodable image as a JPEG data URL, downscaled to
+// COMPRESS_MAX_DIMENSION on its long edge. Used both for compression and
+// for converting non-JPEG formats (PNG, WEBP, etc.) to JPEG.
+async function compressToJpegDataUrl(file, maxDim, quality){
+  const src = await loadImageSource(file);
+  const w = src.width, h = src.height;
+  let targetW = w, targetH = h;
+  if(Math.max(w, h) > maxDim){
+    const scale = maxDim / Math.max(w, h);
+    targetW = Math.round(w * scale);
+    targetH = Math.round(h * scale);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW; canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(src, 0, 0, targetW, targetH);
+  if(src.close) src.close(); // free ImageBitmap memory promptly
+  return new Promise((resolve, reject)=>{
+    canvas.toBlob(blob=>{
+      if(!blob){ reject(new Error('Could not re-encode image')); return; }
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }, 'image/jpeg', quality);
+  });
+}
+
+// Tags every selected image with GPS EXIF, returning [{name, blob}]. Any
+// format is converted to JPEG (needed to write EXIF at all); compression
+// is applied first if enabled, then the GPS tag is written last — so
+// location data is always intact in the final file regardless of the
+// compression setting. Reports progress via progLabel/progFill.
 async function tagSelectedImages(selected, lat, lon, progLabel, progFill){
   const results = [];
   const usedNames = new Set();
@@ -2159,19 +2635,29 @@ async function tagSelectedImages(selected, lat, lon, progLabel, progFill){
   for(const im of selected){
     progLabel.textContent = `Processing ${im.name} (${done+1} of ${selected.length})…`;
     let blob;
+    let outName = im.name;
     try{
-      if(im.type === 'image/jpeg' || im.type === 'image/jpg'){
-        const dataUrl = await readFileAsDataURL(im.file);
-        const tagged = await geoTagJpeg(dataUrl, lat, lon);
-        blob = dataURLToBlob(tagged);
+      let workingFile = await maybeConvertHeic(im.file);
+      const isJpeg = workingFile.type === 'image/jpeg' || workingFile.type === 'image/jpg' || /\.jpe?g$/i.test(workingFile.name || '');
+      let dataUrl;
+      if(compressionEnabled || !isJpeg){
+        dataUrl = await compressToJpegDataUrl(workingFile, COMPRESS_MAX_DIMENSION, COMPRESS_JPEG_QUALITY);
+        if(!isJpeg){
+          const dot = outName.lastIndexOf('.');
+          outName = (dot > -1 ? outName.slice(0, dot) : outName) + '.jpg';
+        }
       } else {
-        blob = im.file;
+        dataUrl = await readFileAsDataURL(workingFile);
       }
+      const tagged = await geoTagJpeg(dataUrl, lat, lon);
+      blob = dataURLToBlob(tagged);
     }catch(e){
-      console.error('Failed to tag', im.name, e);
+      console.error('Failed to process', im.name, e);
+      toast(`Could not process "${im.name}" — kept the original, untagged. ${e.message || ''}`, 'err');
       blob = im.file;
     }
-    results.push({ name: uniqueName(im.name, usedNames), blob });
+    outName = uniqueName(outName, usedNames);
+    results.push({ name: outName, blob, fileType: blob.type || 'image/jpeg' });
     done++;
     progFill.style.width = Math.round(done/selected.length*100) + '%';
   }
@@ -2198,6 +2684,7 @@ async function processAndExport(mode){
   document.getElementById('resultBox').classList.remove('show');
 
   let resultMsg;
+  let taggedResults = null;
   try{
     if(mode === 'folder'){
       if(!autoSaveDirHandle) throw new Error('Choose a folder first');
@@ -2206,9 +2693,9 @@ async function processAndExport(mode){
       const subName = `${sanitizeForFilename(wo)}_${sanitizeForFilename(prop.code)}`;
       const subDir = await autoSaveDirHandle.getDirectoryHandle(subName, { create: true });
 
-      const tagged = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
+      taggedResults = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
       progLabel.textContent = 'Saving files…';
-      for(const f of tagged){
+      for(const f of taggedResults){
         const fh = await subDir.getFileHandle(f.name, { create: true });
         const w = await fh.createWritable();
         await w.write(f.blob);
@@ -2216,10 +2703,10 @@ async function processAndExport(mode){
       }
       resultMsg = `${selected.length} photo${selected.length>1?'s':''} tagged at ${lat.toFixed(6)}, ${lon.toFixed(6)} for ${prop.code} — saved to "${State.autoSaveDirName}/${subName}"`;
     } else {
-      const tagged = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
+      taggedResults = await tagSelectedImages(selected, lat, lon, progLabel, progFill);
       progLabel.textContent = 'Building ZIP…';
       const zip = new JSZip();
-      tagged.forEach(f => zip.file(f.name, f.blob));
+      taggedResults.forEach(f => zip.file(f.name, f.blob));
       const zipBlob = await zip.generateAsync({type:'blob'}, (meta)=>{
         progFill.style.width = Math.round(meta.percent) + '%';
       });
@@ -2258,16 +2745,17 @@ async function processAndExport(mode){
 
   // Detailed audit trail — one entry per image, not per batch, as required
   // for the 30-day rolling audit log (separate from the batch-level
-  // Activity Log above).
-  selected.forEach(img => {
+  // Activity Log above). Uses the actual output filename/type (post
+  // compression/conversion), since that's what was really saved.
+  (taggedResults || []).forEach(f => {
     addAuditLogEntry({
       type: 'geotag',
       uid: currentUser ? currentUser.uid : null,
       username: userProfile ? userProfile.username : 'unknown',
       wo, propertyId: prop.code, address: prop.address,
       lat, lon,
-      filename: img.name,
-      fileType: img.type || (img.name.split('.').pop() || '').toLowerCase(),
+      filename: f.name,
+      fileType: f.fileType || 'image/jpeg',
       listId: activeListId || null
     });
   });
@@ -2555,12 +3043,17 @@ function escapeAttr(s){ return escapeHtml(s); }
 /* ============================= BIND ALL ============================= */
 function bindEvents(){
   bindTabs();
+  bindSettingsNav();
+  bindThemeToggle();
   bindPropertySearch();
   bindImageIntake();
   bindDbTab();
   bindLogTab();
   bindUsersTab();
   bindAuditTab();
+  bindEmailTemplateTab();
+  bindCompressionToggle();
+  bindSupportTab();
 
   document.getElementById('woNumber').addEventListener('input', updateProcessBtn);
   document.getElementById('latField').addEventListener('input', ()=>{ updateStamp(); updateProcessBtn(); });
