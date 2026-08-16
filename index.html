@@ -134,6 +134,11 @@
   .reveal-password button{background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; font-family:var(--sans);}
   .reveal-password button:hover{color:var(--amber); border-color:var(--amber-dim);}
   .support-step{display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--border-soft);}
+  /* Keep the required OpenStreetMap credit line, but make it small and
+     unobtrusive against the app's dark theme rather than Leaflet's default
+     white attribution box. */
+  #propertyMap .leaflet-control-attribution{background:rgba(11,16,21,0.72); color:var(--text-faint); font-size:9.5px; padding:1px 5px;}
+  #propertyMap .leaflet-control-attribution a{color:var(--text-faint);}
   .support-step:last-child{border-bottom:none;}
   .support-step .num{flex-shrink:0; width:28px; height:28px; border-radius:50%; background:var(--bg-inset); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:12px; color:var(--amber);}
   .support-step .body h4{margin:0 0 4px; font-size:14px;}
@@ -422,7 +427,7 @@
       <div class="row">
         <div>
           <label class="field-label">Work order number</label>
-          <input type="text" id="woNumber" placeholder="e.g. WO-24815" class="mono-input">
+          <input type="text" id="woNumber" placeholder="e.g. R1234567-1 or WO12345678" class="mono-input">
         </div>
       </div>
     </div>
@@ -1213,7 +1218,9 @@ auth.onAuthStateChanged(async (user)=>{
 
     const regions = myRegions();
     if(isAdmin()){
-      activeListId = userProfile.lastListId || 'ALL';
+      // Admin always has both regions, implicitly — always start on the
+      // merged "Both regions" view for the same reason as below.
+      activeListId = 'ALL';
       document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · All Regions`;
       document.getElementById('listAssignOverlay').classList.add('hidden');
       document.getElementById('mainWrap').classList.remove('hidden');
@@ -1223,7 +1230,11 @@ auth.onAuthStateChanged(async (user)=>{
       document.getElementById('mainWrap').classList.add('hidden');
       await showListAssignOverlay();
     } else {
-      activeListId = regions.length > 1 ? (userProfile.lastListId || 'ALL') : regions[0];
+      // Auto-select the account's allowed property list: a single region
+      // is selected automatically, and an account with both regions always
+      // starts on the merged "Both regions" view — having both trumps
+      // whatever single region might have been viewed last session.
+      activeListId = regions.length > 1 ? 'ALL' : regions[0];
       document.getElementById('userEmailLabel').textContent = `${userProfile.username} · ${roleLabel(userProfile.role)} · ${regionsLabel(regions)}`;
       document.getElementById('listAssignOverlay').classList.add('hidden');
       document.getElementById('mainWrap').classList.remove('hidden');
@@ -2328,9 +2339,14 @@ let propertyMapMarker = null;
 function ensurePropertyMap(){
   if(propertyMapInstance) return propertyMapInstance;
   propertyMapInstance = L.map('propertyMap', { attributionControl: true }).setView([-41.2, 174.8], 5);
+  // OpenStreetMap's ODbL license requires visible credit, so that stays —
+  // it's just plain text now, not a clickable link out to openstreetmap.org.
+  // Leaflet's own "Leaflet" credit link is turned off entirely (setPrefix(false)),
+  // which Leaflet's terms don't require in the first place.
+  propertyMapInstance.attributionControl.setPrefix(false);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    attribution: '© OpenStreetMap contributors'
   }).addTo(propertyMapInstance);
   propertyMapMarker = L.marker([-41.2, 174.8], { draggable: true }).addTo(propertyMapInstance);
   propertyMapMarker.on('dragend', ()=>{
@@ -2790,11 +2806,14 @@ function bindCompressionToggle(){
 /* ============================= SUPPORT TAB (Trade only) ============================= */
 const SUPPORT_STEPS = [
   { title: 'Sign in', body: 'Use the username and password your Admin or Staff manager gave you. If you\'ve forgotten either, contact your Switched On Housing representative — only an Admin or Staff account can reset a password.' },
+  { title: 'Set your auto-save folder first', body: 'Before your first job, go to the Job tab and click "Choose folder" to pick a default save location on this device (e.g. a "Field Photos" folder). This is important — once it\'s set, every tagged photo saves straight there automatically, in a subfolder per job, with no extra prompts. It\'s remembered on this device only, so you\'ll set it again if you switch phones or computers, or use a different browser.' },
   { title: 'Pick a job', body: 'On the Job tab, start typing a work order number and property ID or address — matching properties from your region\'s database appear as you type. Select one, or type the details manually if it\'s not in the list.' },
   { title: 'Check the location', body: 'The property\'s coordinates are looked up automatically. If they look wrong, you can edit the latitude/longitude fields directly before tagging any photos.' },
   { title: 'Add your photos', body: 'Drag and drop photos (or a whole folder) onto the upload area, or use the file picker. Thumbnails appear below — tap any photo to include or exclude it from this batch.' },
   { title: 'Apply the location', body: 'Once you\'re happy with the work order, property, and selected photos, click "Apply location & save to folder" (writes tagged files straight to a folder on your device) or "Apply location & download ZIP" (bundles them into one file). Photos are automatically compressed and converted to JPEG first, unless you\'ve turned that off in Settings.' },
   { title: 'Browse the property list', body: 'The Property DB tab shows every property in your assigned region(s). You can search and export it, but only Admin and Staff can add, edit, or upload new properties.' },
+  { title: 'Photo compression', body: 'Settings → Photo Compression lets you turn resizing on or off for this device. On (the default) shrinks photos before the location is written in — much smaller files with barely any visible quality loss, and non-essential metadata like camera make/model gets stripped out too. Off keeps your photos full-resolution. Either way, the location is always written in, and it\'s always written in after compression, so it\'s never affected.' },
+  { title: 'Light and dark mode', body: 'Settings → Appearance has a toggle to switch between light and dark mode. It\'s a per-device preference — pick whichever is easier to read in bright sun or low light.' },
   { title: 'Check your account details', body: 'The Settings tab (My Account) shows your username, password, company, and region — useful if you ever need to double check what was set up for you.' }
 ];
 function bindSupportTab(){
