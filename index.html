@@ -783,13 +783,31 @@
 
           <div id="resetPasswordBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
             <div class="panel-sub" style="margin:0 0 12px;">Resetting password for <strong id="resetPasswordUsernameLabel" style="color:var(--text);"></strong></div>
-            <label class="field-label">New password</label>
-            <div style="display:flex; gap:8px;">
-              <input type="text" id="resetPasswordValue" class="mono-input" style="flex:1;">
-              <button type="button" class="btn small ghost" id="genResetPasswordBtn">Generate</button>
+
+            <div id="resetPasswordNormalBox">
+              <label class="field-label">New password</label>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="resetPasswordValue" class="mono-input" style="flex:1;">
+                <button type="button" class="btn small ghost" id="genResetPasswordBtn">Generate</button>
+              </div>
             </div>
+
+            <div id="resetPasswordLegacyBox" style="display:none;">
+              <div class="login-error" style="margin:0;">
+                This account predates password storage, so there's no current password on file to reset from —
+                and changing another account's sign-in password without knowing it needs backend (Admin SDK)
+                privileges, which Firebase deliberately doesn't allow from client-side code alone, so there's no
+                safe way around that here. Fastest fix: remove this account and recreate it with a new password.
+                Note: without the optional Cloud Function deployed, removing an account only clears its app
+                record — the underlying sign-in record survives as a harmless orphan — so the new account will
+                need a <em>different</em> username, not the exact same one. To keep this exact account (same
+                username included), deploy the optional Cloud Function first — see SETUP.md / functions/index.js.
+              </div>
+            </div>
+
             <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
               <button class="btn small primary" id="confirmResetPasswordBtn">Reset password</button>
+              <button class="btn small ghost danger" id="removeAndRecreateBtn" style="display:none;">Remove &amp; recreate this account</button>
               <button class="btn small ghost" id="cancelResetPasswordBtn">Cancel</button>
             </div>
             <div class="login-error" id="resetPasswordError"></div>
@@ -2033,6 +2051,17 @@ function openResetPassword(u){
   document.getElementById('resetPasswordUsernameLabel').textContent = u.username || '';
   document.getElementById('resetPasswordValue').value = generateRandomPassword();
 
+  // Accounts created before password storage existed have no current
+  // password on file, so the client-side self-serve reset (see
+  // resetUserPassword) has nothing to sign in with — offer the
+  // remove-and-recreate shortcut instead of a reset button that can only
+  // fail. See resetPasswordLegacyBox's copy for the full explanation.
+  const hasKnownPassword = !!u.password;
+  document.getElementById('resetPasswordNormalBox').style.display = hasKnownPassword ? '' : 'none';
+  document.getElementById('resetPasswordLegacyBox').style.display = hasKnownPassword ? 'none' : '';
+  document.getElementById('confirmResetPasswordBtn').style.display = hasKnownPassword ? '' : 'none';
+  document.getElementById('removeAndRecreateBtn').style.display = hasKnownPassword ? 'none' : '';
+
   box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -2171,6 +2200,37 @@ function bindUsersTab(){
       errBox.textContent = err.message || 'Could not reset that password.';
     }
     btn.disabled = false;
+  });
+  document.getElementById('removeAndRecreateBtn').addEventListener('click', async ()=>{
+    const uid = document.getElementById('resetPasswordBox').dataset.uid;
+    const target = usersListCache.find(x => x.uid === uid);
+    if(!target) return;
+    await removeUser(target.uid, target.usernameLower, target.username, target.role);
+    // removeUser() has its own confirm() dialog — if the admin cancelled
+    // that, the account is still in usersListCache (refreshed inside
+    // removeUser), so bail out here rather than opening Add User.
+    if(usersListCache.some(x => x.uid === target.uid)) return;
+
+    document.getElementById('resetPasswordBox').style.display = 'none';
+    document.getElementById('addUserBox').style.display = 'block';
+    document.getElementById('emailTemplateBox').style.display = 'none';
+    document.getElementById('editUserBox').style.display = 'none';
+    document.getElementById('addUserError').textContent = `Pick a different username than "${target.username}" — the old sign-in record isn't deleted without the optional Cloud Function.`;
+    document.getElementById('newUserUsername').value = '';
+    document.getElementById('newUserUsername').placeholder = `e.g. ${target.username || 'jsmith'}2`;
+    document.getElementById('newUserPassword').value = generateRandomPassword();
+    if(isAdmin()) document.getElementById('newUserRole').value = target.role;
+    document.getElementById('newUserFirstName').value = target.firstName || '';
+    document.getElementById('newUserLastName').value = target.lastName || '';
+    document.getElementById('newUserCompany').value = target.companyName || '';
+    document.getElementById('newUserMobile').value = target.mobile || '';
+    document.getElementById('newUserEmail').value = target.email || '';
+    document.getElementById('newUserCompanyAdmin').checked = !!target.isCompanyAdmin;
+    updateAddUserFormVisibility();
+    const regions = accountRegions(target);
+    const listSel = document.getElementById('newUserList');
+    if(listSel) listSel.value = regions.length > 1 ? 'BOTH' : (regions[0] || '');
+    document.getElementById('addUserBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 }
 
