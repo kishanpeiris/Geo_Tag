@@ -131,8 +131,9 @@
   .account-detail-label{font-size:11.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; font-family:var(--mono);}
   .account-detail-value{font-family:var(--mono); font-size:13.5px;}
   .reveal-password{display:inline-flex; align-items:center; gap:8px;}
-  .reveal-password button{background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; font-family:var(--sans);}
+  .reveal-password button{background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:3px 6px; cursor:pointer; font-family:var(--sans); display:inline-flex; align-items:center; justify-content:center; line-height:0;}
   .reveal-password button:hover{color:var(--amber); border-color:var(--amber-dim);}
+  .reveal-password button svg{display:block;}
   .support-step{display:flex; gap:14px; padding:16px 0; border-bottom:1px solid var(--border-soft);}
   /* Keep the required OpenStreetMap credit line, but make it small and
      unobtrusive against the app's dark theme rather than Leaflet's default
@@ -780,6 +781,20 @@
             <div class="login-error" id="editUserError"></div>
           </div>
 
+          <div id="resetPasswordBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
+            <div class="panel-sub" style="margin:0 0 12px;">Resetting password for <strong id="resetPasswordUsernameLabel" style="color:var(--text);"></strong></div>
+            <label class="field-label">New password</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="resetPasswordValue" class="mono-input" style="flex:1;">
+              <button type="button" class="btn small ghost" id="genResetPasswordBtn">Generate</button>
+            </div>
+            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+              <button class="btn small primary" id="confirmResetPasswordBtn">Reset password</button>
+              <button class="btn small ghost" id="cancelResetPasswordBtn">Cancel</button>
+            </div>
+            <div class="login-error" id="resetPasswordError"></div>
+          </div>
+
           <div class="db-scroll" style="max-height:none;">
             <table class="db-table">
               <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:230px"></th></tr></thead>
@@ -1054,6 +1069,12 @@ function isAdmin(){ return myRole() === 'admin'; }
 function isStaffRole(){ return myRole() === 'staff'; }
 function isStaffOrAdmin(){ return isAdmin() || isStaffRole(); }
 function roleLabel(role){ return role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Trade'; }
+
+// Small inline eye / eye-off icons for masked password reveal toggles
+// (Users tab, My Account) — no external file dependency, matches the
+// app's inline-SVG icon approach used elsewhere (e.g. the login logo).
+const EYE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-3.27 3.11A9.12 9.12 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 4.06-5.94"/><path d="M1 1l22 22"/><path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/></svg>`;
 let activeListId = null;  // the region currently being viewed/edited ('ALL' for multi-region accounts)
 
 // Regions a given account (any role) is assigned to, as an array of region
@@ -1149,7 +1170,7 @@ function renderMyAccountBox(){
   const rows = [];
   rows.push(['Username', escapeHtml(userProfile.username || '—')]);
   if(userProfile.password){
-    rows.push(['Password', `<span class="reveal-password"><span class="mono-input" id="myPasswordText" style="display:inline-block; padding:4px 10px; letter-spacing:2px;">••••••••</span><button type="button" id="myPasswordToggle">Show</button></span>`]);
+    rows.push(['Password', `<span class="reveal-password"><span class="mono-input" id="myPasswordText" style="display:inline-block; padding:4px 10px; letter-spacing:2px;">••••••••</span><button type="button" id="myPasswordToggle" aria-label="Show password" title="Show password">${EYE_ICON}</button></span>`]);
   }
   rows.push(['Role', roleLabel(userProfile.role)]);
   if(userProfile.role === 'admin'){
@@ -1177,7 +1198,8 @@ function renderMyAccountBox(){
       const el = document.getElementById('myPasswordText');
       const revealed = el.textContent !== '••••••••';
       el.textContent = revealed ? '••••••••' : userProfile.password;
-      toggle.textContent = revealed ? 'Show' : 'Hide';
+      toggle.innerHTML = revealed ? EYE_ICON : EYE_OFF_ICON;
+      toggle.title = toggle.ariaLabel = revealed ? 'Show password' : 'Hide password';
     });
   }
 }
@@ -1581,23 +1603,58 @@ async function adminUpdateUser(target, { firstName, lastName, companyName, mobil
   });
 }
 
-async function resetUserPassword(uid, username){
-  const newPassword = generateRandomPassword();
-  try{
-    const callable = firebase.app().functions().httpsCallable('adminResetPassword');
-    await callable({ uid, newPassword });
-  }catch(e){
-    console.error('adminResetPassword failed', e);
-    toast('Password reset needs the optional Cloud Function deployed first — see SETUP.md / functions/index.js.', 'err');
-    return;
+// Resets an existing account's password entirely on this page, without
+// needing the optional Cloud Function deployed. Changing another user's
+// Firebase Auth password normally requires Admin SDK privileges — but
+// since this app already stores each account's current plaintext
+// password by deliberate design (see the note on adminCreateUser above),
+// we can instead briefly sign into the isolated secondary Firebase App
+// AS the target account (using their currently-known password), call
+// updatePassword() on that session, then sign the secondary app back
+// out. This never touches the admin's own active session. Only falls
+// back to the Cloud Function if the account's current password isn't on
+// file at all (e.g. an account created before password storage existed —
+// see SETUP.md for deploying that as a backstop).
+async function resetUserPassword(uid, newPassword){
+  const target = usersListCache.find(x => x.uid === uid);
+  if(!target) throw new Error('Could not find that account — refresh and try again.');
+  if(!newPassword || newPassword.length < 6){
+    throw new Error('New password must be at least 6 characters.');
   }
-  try{
-    await db.collection('users').doc(uid).set({ password: newPassword }, { merge: true });
-  }catch(e){
-    console.error('Could not save the new password to the account record', e);
+
+  if(target.password){
+    const secAuth = getSecondaryApp().auth();
+    try{
+      const cred = await secAuth.signInWithEmailAndPassword(usernameToEmail(target.usernameLower), target.password);
+      await cred.user.updatePassword(newPassword);
+    }catch(e){
+      console.error('Self-serve password reset failed', e);
+      throw new Error('Could not sign in as that account with its stored password — it may be out of sync with the real one. Try again, or deploy the optional Cloud Function (see SETUP.md / functions/index.js) as a backstop.');
+    } finally {
+      try{ await secAuth.signOut(); }catch(e){}
+    }
+  } else {
+    try{
+      const callable = firebase.app().functions().httpsCallable('adminResetPassword');
+      await callable({ uid, newPassword });
+    }catch(e){
+      console.error('adminResetPassword failed', e);
+      throw new Error('This account has no current password on file (it predates password storage), so it can\'t be reset here — deploy the optional Cloud Function first (see SETUP.md / functions/index.js), or remove and recreate the account.');
+    }
   }
-  toast(`Password reset for "${username}"`, 'ok');
-  await renderUsersTab();
+
+  await db.collection('users').doc(uid).set({ password: newPassword }, { merge: true });
+  target.password = newPassword;
+
+  addAuditLogEntry({
+    type: 'password_reset',
+    uid: currentUser ? currentUser.uid : null,
+    username: userProfile ? userProfile.username : 'unknown',
+    role: userProfile ? userProfile.role : null,
+    targetUid: uid,
+    targetUsername: target.username,
+    targetRole: target.role
+  });
 }
 
 async function removeUser(uid, usernameLower, username, role){
@@ -1841,7 +1898,7 @@ function renderUsersTable(){
     return `
     <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
       <td>${escapeHtml(u.username || '—')}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
-        ${showPw ? `<div class="reveal-password" style="margin-top:4px;"><span class="mono-input" data-pwtext style="display:inline-block; padding:2px 8px; font-size:11px;">••••••••</span><button type="button" data-act="togglepw">Show</button></div>` : ''}
+        ${showPw ? `<div class="reveal-password" style="margin-top:4px;"><span class="mono-input" data-pwtext style="display:inline-block; padding:2px 8px; font-size:11px;">••••••••</span><button type="button" data-act="togglepw" aria-label="Show password" title="Show password">${EYE_ICON}</button></div>` : ''}
       </td>
       <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
       <td>${escapeHtml(regionsLabel(accountRegions(u)))}</td>
@@ -1864,7 +1921,8 @@ function renderUsersTable(){
       const el = tr.querySelector('[data-pwtext]');
       const revealed = el.textContent !== '••••••••';
       el.textContent = revealed ? '••••••••' : (u ? u.password : '');
-      btn.textContent = revealed ? 'Show' : 'Hide';
+      btn.innerHTML = revealed ? EYE_ICON : EYE_OFF_ICON;
+      btn.title = btn.ariaLabel = revealed ? 'Show password' : 'Hide password';
     });
   });
   body.querySelectorAll('[data-act="edit"]').forEach(btn=>{
@@ -1877,7 +1935,8 @@ function renderUsersTable(){
   body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const tr = btn.closest('tr');
-      resetUserPassword(tr.dataset.uid, tr.dataset.username);
+      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
+      if(u) openResetPassword(u);
     });
   });
   body.querySelectorAll('[data-act="email"]').forEach(btn=>{
@@ -1910,6 +1969,7 @@ function updateAddUserFormVisibility(){
 function openEditUser(u){
   document.getElementById('addUserBox').style.display = 'none';
   document.getElementById('emailTemplateBox').style.display = 'none';
+  document.getElementById('resetPasswordBox').style.display = 'none';
 
   const role = u.role;
   const box = document.getElementById('editUserBox');
@@ -1959,11 +2019,30 @@ function openEditUser(u){
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// Opens the inline "reset password" panel for an existing account, right
+// on the Users tab — see resetUserPassword() for how the reset itself
+// happens without needing the optional Cloud Function deployed.
+function openResetPassword(u){
+  document.getElementById('addUserBox').style.display = 'none';
+  document.getElementById('emailTemplateBox').style.display = 'none';
+  document.getElementById('editUserBox').style.display = 'none';
+
+  const box = document.getElementById('resetPasswordBox');
+  box.dataset.uid = u.uid;
+  document.getElementById('resetPasswordError').textContent = '';
+  document.getElementById('resetPasswordUsernameLabel').textContent = u.username || '';
+  document.getElementById('resetPasswordValue').value = generateRandomPassword();
+
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function bindUsersTab(){
   document.getElementById('addUserBtn').addEventListener('click', ()=>{
     document.getElementById('addUserBox').style.display = 'block';
     document.getElementById('emailTemplateBox').style.display = 'none';
     document.getElementById('editUserBox').style.display = 'none';
+    document.getElementById('resetPasswordBox').style.display = 'none';
     document.getElementById('addUserError').textContent = '';
     document.getElementById('newUserUsername').value = '';
     document.getElementById('newUserPassword').value = '';
@@ -2063,6 +2142,33 @@ function bindUsersTab(){
       await renderUsersTab();
     }catch(err){
       errBox.textContent = err.message || 'Could not save those changes.';
+    }
+    btn.disabled = false;
+  });
+  document.getElementById('genResetPasswordBtn').addEventListener('click', ()=>{
+    document.getElementById('resetPasswordValue').value = generateRandomPassword();
+  });
+  document.getElementById('cancelResetPasswordBtn').addEventListener('click', ()=>{
+    document.getElementById('resetPasswordBox').style.display = 'none';
+  });
+  document.getElementById('confirmResetPasswordBtn').addEventListener('click', async ()=>{
+    const errBox = document.getElementById('resetPasswordError');
+    errBox.textContent = '';
+    const uid = document.getElementById('resetPasswordBox').dataset.uid;
+    const newPassword = document.getElementById('resetPasswordValue').value.trim();
+    const target = usersListCache.find(x => x.uid === uid);
+    const btn = document.getElementById('confirmResetPasswordBtn');
+    btn.disabled = true;
+    try{
+      await resetUserPassword(uid, newPassword);
+      document.getElementById('resetPasswordBox').style.display = 'none';
+      toast(`Password reset for "${target ? target.username : ''}"`, 'ok');
+      await renderUsersTab();
+      // Offer to email the new password straight away — same flow as
+      // account creation, and works for every role (Admin/Staff/Trade).
+      if(target) openEmailTemplate(target, newPassword);
+    }catch(err){
+      errBox.textContent = err.message || 'Could not reset that password.';
     }
     btn.disabled = false;
   });
@@ -2476,6 +2582,7 @@ async function geocodeCurrent(){
    Thumbnails live only in this tab's memory via short-lived object URLs,
    which are revoked (and the images dropped) as soon as a batch is
    successfully processed — see the end of processAndExport() below. */
+
 function bindImageIntake(){
   const dz = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
@@ -2558,7 +2665,7 @@ function addFiles(fileList){
   const imgs = fileList.filter(isImageFile);
   if(!imgs.length){ toast('No image files found in that selection', 'err'); return; }
   imgs.forEach(f=>{
-    State.images.push({
+    const im = {
       id: imgIdSeq++,
       file: f,
       name: f.name,
@@ -2566,7 +2673,8 @@ function addFiles(fileList){
       type: f.type || (/\.(jpe?g)$/i.test(f.name||'') ? 'image/jpeg' : ''),
       url: URL.createObjectURL(f),
       selected: true
-    });
+    };
+    State.images.push(im);
   });
   document.getElementById('thumbArea').style.display = 'block';
   renderThumbs();
