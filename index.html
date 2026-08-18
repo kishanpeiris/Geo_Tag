@@ -38,7 +38,7 @@
     --sans:'Inter', system-ui, sans-serif;
   }
   :root[data-theme="light"]{
-    --bg:#F2F4F7;
+    --bg:#F5F5F5;
     --bg-panel:#FFFFFF;
     --bg-elevated:#FFFFFF;
     --bg-inset:#EAEDF1;
@@ -81,6 +81,8 @@
   #loginOverlay.hidden{display:none;}
   #listAssignOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
   #listAssignOverlay.hidden{display:none;}
+  #setupWizardOverlay{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;}
+  #setupWizardOverlay.hidden{display:none;}
   .login-card{width:100%; max-width:380px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:28px 26px;}
   .login-brand{display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:22px; text-align:center;}
   .login-brand .brand-mark{width:52px; height:52px; border-width:1.5px;}
@@ -304,6 +306,9 @@
   .log-item .ts{color:var(--text-faint); font-size:11px;}
   .log-item .addr{color:var(--text-dim);}
   .log-item .meta{color:var(--text-faint); font-size:11px; margin-top:3px; font-family:var(--mono);}
+  .log-files{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .log-files .file-chip{font-family:var(--mono); font-size:10.5px; color:var(--text-dim); background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:4px; padding:2px 7px; cursor:default;}
+  .log-files .more-chip{font-family:var(--mono); font-size:10.5px; color:var(--text-faint); background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:4px; padding:2px 7px;}
   .empty-state{text-align:center; padding:30px 10px; color:var(--text-faint); font-size:12.5px;}
 
   .role-badge{font-family:var(--mono); font-size:10px; letter-spacing:0.04em; padding:2px 7px; border-radius:10px; text-transform:uppercase; display:inline-block;}
@@ -325,6 +330,7 @@
   .audit-item .kind.geotag{color:var(--amber); border:1px solid var(--amber-dim);}
   .audit-item .kind.removed{color:var(--red); border:1px solid rgba(225,104,90,0.4);}
   .audit-item .kind.created{color:var(--green); border:1px solid rgba(95,179,128,0.4);}
+  .audit-item .kind.updated{color:var(--teal); border:1px solid var(--teal-dim);}
   .audit-item .ts{color:var(--text-faint); font-size:11px;}
   .audit-item .detail{color:var(--text-dim); margin-top:3px; font-family:var(--mono); font-size:11px;}
 
@@ -394,6 +400,35 @@
     </div>
     <button type="button" class="btn primary" id="listAssignConfirmBtn" style="width:100%; justify-content:center;">Continue</button>
     <div class="login-error" id="listAssignError"></div>
+  </div>
+</div>
+
+<div id="setupWizardOverlay" class="hidden">
+  <div class="login-card">
+    <p class="sub" id="setupWizardStepLabel" style="margin:0 0 6px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint);">Step 1 of 2</p>
+
+    <div id="setupWizardStep1">
+      <h2>Set your auto-save folder</h2>
+      <p class="sub">Pick a default folder on this device (e.g. a "Field Photos" folder) — once it's set, every tagged photo saves straight there automatically, in a subfolder per job, with no extra prompts each time. This is remembered on this device only, so you'll set it again if you switch phones, computers, or browsers.</p>
+      <div id="setupWizardFolderRow" style="margin:16px 0;">
+        <button type="button" class="btn primary" id="setupWizardChooseFolderBtn" style="width:100%; justify-content:center;">Choose folder</button>
+        <div class="login-error" id="setupWizardFolderStatus" style="color:var(--text-dim);"></div>
+      </div>
+    </div>
+
+    <div id="setupWizardStep2" style="display:none;">
+      <h2>Photo compression</h2>
+      <p class="sub">Photos are compressed a little by default before saving, to keep file sizes down and uploads/imports fast — most jobs won't notice a quality difference. Turn it off any time in Settings if you'd rather keep full-resolution originals.</p>
+      <label style="display:flex; align-items:center; gap:10px; margin:16px 0; font-size:13.5px; color:var(--text);">
+        <input type="checkbox" id="setupWizardCompressToggle" style="width:18px; height:18px;">
+        Compress photos before saving (recommended)
+      </label>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <button type="button" class="btn ghost" id="setupWizardSkipBtn" style="flex:1; justify-content:center;">Skip</button>
+      <button type="button" class="btn primary" id="setupWizardNextBtn" style="flex:1; justify-content:center;">Next</button>
+    </div>
   </div>
 </div>
 
@@ -549,7 +584,7 @@
       <div id="uploadModeBox" style="display:none;">
         <div class="upload-modes">
           <label><input type="radio" name="uploadMode" value="merge" checked> Merge / update existing</label>
-          <label><input type="radio" name="uploadMode" value="replace"> Replace entire list</label>
+          <label id="uploadModeReplaceLabel"><input type="radio" name="uploadMode" value="replace"> Replace entire list</label>
         </div>
         <div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;" id="uploadPreview"></div>
         <button class="btn small primary" id="confirmUploadBtn">Apply</button>
@@ -644,16 +679,30 @@
           <div class="flex-between" style="margin-bottom:14px; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
               <span style="font-size:12.5px; color:var(--text-dim);"><span id="usersCount2">0</span> accounts</span>
-              <input type="search" id="usersSearch" class="mono-input" placeholder="Search username, name, company…" style="width:220px;">
+              <input type="search" id="usersSearch" class="mono-input" placeholder="Search username, name, company, mobile, email…" style="width:260px;">
               <select id="usersFilterSelect" class="mono-input" style="width:auto;">
                 <option value="all">All users</option>
                 <option value="admin">Admin</option>
                 <option value="staff">Staff</option>
                 <option value="trade">Trade</option>
               </select>
+              <select id="usersCompanyFilterSelect" class="mono-input" style="width:auto;">
+                <option value="all">All companies</option>
+              </select>
               <button class="btn small ghost" id="exportUsersBtn">Export CSV</button>
             </div>
             <button class="btn small primary" id="addUserBtn">+ Add user</button>
+          </div>
+
+          <div id="usersBulkBar" class="flex-between" style="display:none; margin-bottom:14px; flex-wrap:wrap; gap:10px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px;">
+            <span style="font-size:12.5px; color:var(--text-dim);"><span id="usersSelectedCount">0</span> selected</span>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn small ghost" id="bulkEditBtn">Edit</button>
+              <button class="btn small ghost" id="bulkResetBtn">Reset password</button>
+              <button class="btn small ghost" id="bulkEmailBtn">Email details</button>
+              <button class="btn small ghost danger" id="bulkRemoveBtn">Remove</button>
+              <button class="btn small ghost" id="bulkClearBtn">Clear selection</button>
+            </div>
           </div>
 
           <div id="addUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
@@ -717,6 +766,10 @@
                 <label for="newUserCompanyAdmin" style="font-size:12.5px; color:var(--text-dim); cursor:pointer;">This is the company's admin account (emails address the company by name, not a first name)</label>
               </div>
             </div>
+            <div id="newUserCanDeleteBox" style="display:none; margin-top:12px; align-items:center; gap:8px;">
+              <input type="checkbox" id="newUserCanDelete" style="width:auto;">
+              <label for="newUserCanDelete" style="font-size:12.5px; color:var(--text-dim); cursor:pointer;">Can delete properties (Property DB tab) — only <span style="font-family:var(--mono);" id="newUserCanDeleteGrantorLabel"></span> can grant this</label>
+            </div>
             <div style="margin-top:14px; display:flex; gap:10px;">
               <button class="btn small primary" id="createUserBtn">Create account</button>
               <button class="btn small ghost" id="cancelAddUserBtn">Cancel</button>
@@ -735,6 +788,16 @@
 
           <div id="editUserBox" style="display:none; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:16px; margin-bottom:16px;">
             <div class="panel-sub" style="margin:0 0 12px;">Editing <strong id="editUserUsernameLabel" style="color:var(--text);"></strong></div>
+            <div class="row" id="editUserRoleRow" style="margin-bottom:12px; display:none;">
+              <div>
+                <label class="field-label">Role <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(Admin only)</span></label>
+                <select id="editUserRole" class="mono-input" style="width:100%;">
+                  <option value="trade">Trade</option>
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
             <div class="row" id="editUserNameFieldsBox">
               <div>
                 <label class="field-label" id="editUserFirstNameLabel">First name</label>
@@ -774,6 +837,10 @@
                 <select id="editUserRegion" class="mono-input" style="width:100%;"></select>
               </div>
             </div>
+            <div id="editUserCanDeleteBox" style="display:none; margin-top:12px; align-items:center; gap:8px;">
+              <input type="checkbox" id="editUserCanDelete" style="width:auto;">
+              <label for="editUserCanDelete" style="font-size:12.5px; color:var(--text-dim); cursor:pointer;">Can delete properties (Property DB tab) — only <span style="font-family:var(--mono);" id="editUserCanDeleteGrantorLabel"></span> can grant this</label>
+            </div>
             <div style="margin-top:14px; display:flex; gap:10px;">
               <button class="btn small primary" id="saveEditUserBtn">Save changes</button>
               <button class="btn small ghost" id="cancelEditUserBtn">Cancel</button>
@@ -795,13 +862,17 @@
             <div id="resetPasswordLegacyBox" style="display:none;">
               <div class="login-error" style="margin:0;">
                 This account predates password storage, so there's no current password on file to reset from —
-                and changing another account's sign-in password without knowing it needs backend (Admin SDK)
-                privileges, which Firebase deliberately doesn't allow from client-side code alone, so there's no
-                safe way around that here. Fastest fix: remove this account and recreate it with a new password.
-                Note: without the optional Cloud Function deployed, removing an account only clears its app
-                record — the underlying sign-in record survives as a harmless orphan — so the new account will
-                need a <em>different</em> username, not the exact same one. To keep this exact account (same
-                username included), deploy the optional Cloud Function first — see SETUP.md / functions/index.js.
+                changing another account's sign-in password without knowing it needs backend privileges a
+                browser alone can't have. Fastest fix on the free plan: remove this account below and recreate
+                it with a new password.
+              </div>
+              <div style="font-size:12.5px; color:var(--text-dim); margin-top:10px; line-height:1.6;">
+                <strong style="color:var(--text-faint);">To reuse the exact same username</strong> (optional —
+                skip this if a new username is fine): after removing the account here, also delete its sign-in
+                record by hand — Firebase console → Authentication → Users → find
+                <code class="mono-input" style="padding:1px 6px; font-size:11.5px;" id="legacyEmailHint"></code>
+                → ⋮ menu → Delete account. Then the same username can be reused straight away when you recreate
+                it below.
               </div>
             </div>
 
@@ -815,7 +886,7 @@
 
           <div class="db-scroll" style="max-height:none;">
             <table class="db-table">
-              <thead><tr><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th><th style="width:230px"></th></tr></thead>
+              <thead><tr><th style="width:34px"><input type="checkbox" id="usersSelectAllCb" aria-label="Select all"></th><th>Username</th><th style="width:90px">Role</th><th style="width:100px">Region</th><th style="width:90px">Status</th></tr></thead>
               <tbody id="usersTableBody"></tbody>
             </table>
           </div>
@@ -1088,6 +1159,24 @@ function isStaffRole(){ return myRole() === 'staff'; }
 function isStaffOrAdmin(){ return isAdmin() || isStaffRole(); }
 function roleLabel(role){ return role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Trade'; }
 
+// One account is the fixed "global admin" — the only account with
+// property-deletion rights by default. They can hand that specific
+// permission to other Admin accounts individually (Users tab → Add/Edit
+// → "Can delete properties" checkbox, which only they ever see). If this
+// account is ever renamed or removed, update this constant and redeploy
+// to hand the role to a different username.
+const GLOBAL_ADMIN_USERNAME = 'kishanp';
+function isGlobalAdmin(){ return !!userProfile && userProfile.usernameLower === GLOBAL_ADMIN_USERNAME; }
+// NOTE: this is a client-side (UI-level) permission only — Firestore
+// stores each region's whole property list as one array-shaped document,
+// so a security rule can't distinguish "removed a row" from "edited a
+// row's text" the way it can for something like account roles. The real
+// security boundary here is still "Admin or Staff", same as before; this
+// just hides the destructive actions from everyone but the accounts
+// explicitly granted them, as an internal-tool safeguard rather than a
+// hard server-side lock.
+function canDeleteProperties(){ return isGlobalAdmin() || (isAdmin() && userProfile && userProfile.canDeleteProperties === true); }
+
 // Small inline eye / eye-off icons for masked password reveal toggles
 // (Users tab, My Account) — no external file dependency, matches the
 // app's inline-SVG icon approach used elsewhere (e.g. the login logo).
@@ -1129,10 +1218,10 @@ function updateRoleUI(){
   // preference, not something tied to who's uploading.
   document.getElementById('supportTabBtn').style.display = isStaffOrAdmin() ? 'none' : '';
 
-  document.getElementById('usersPanelTitle').textContent = isAdmin() ? 'Users' : 'Trade users';
+  document.getElementById('usersPanelTitle').textContent = 'Users';
   document.getElementById('usersPanelSub').textContent = isAdmin()
     ? 'Add and manage any account — Admin, Staff or Trade. There\'s no self-signup; every account is created here.'
-    : 'Add and manage Trade accounts in your region(s). Admin and Staff accounts, and Trade accounts outside your region(s), aren\'t shown here.';
+    : 'Add and manage Trade accounts in your region(s). You can also see other Staff accounts and Trade accounts in your region(s) here, though only Admin can edit or remove them. Admin accounts, and Trade accounts outside your region(s), aren\'t shown here.';
   document.getElementById('newUserRoleBox').style.display = isAdmin() ? '' : 'none';
   if(!isAdmin()){
     document.getElementById('newUserRole').value = 'trade';
@@ -1141,8 +1230,13 @@ function updateRoleUI(){
   // Only Admin/Staff can add, upload, or clear properties — Trade accounts
   // get a read-only, region-locked view of their own list.
   document.getElementById('uploadDbBtn').style.display = show ? '' : 'none';
-  document.getElementById('clearDbBtn').style.display = show ? '' : 'none';
+  document.getElementById('clearDbBtn').style.display = canDeleteProperties() ? '' : 'none';
   document.getElementById('addRowBtn').style.display = show ? '' : 'none';
+  // "Replace entire list" wipes rows not in the uploaded file, which is
+  // effectively a bulk delete — restricted the same way as the row-level
+  // delete button. Merge/update stays available to any Admin or Staff.
+  const replaceLabel = document.getElementById('uploadModeReplaceLabel');
+  if(replaceLabel) replaceLabel.style.display = canDeleteProperties() ? '' : 'none';
   document.getElementById('dbPanelSub').textContent = show
     ? 'Each region has its own property list. Update the active region by uploading an Excel/CSV file, or edit rows directly below.'
     : 'This is your region\'s property list, kept up to date by Admin and Staff. Trade accounts can search and export it, but only Admin and Staff can add, upload, or remove properties.';
@@ -1418,6 +1512,7 @@ async function loadAllData(){
     renderAuditLog();
     await renderEmailTemplateSubpanel();
   }
+  maybeShowSetupWizard();
 }
 
 /* ============================= USER MANAGEMENT (Admin / Staff) =============================
@@ -1451,7 +1546,7 @@ function computeGreetingName(u){
   return u.username;
 }
 
-async function adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin }){
+async function adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin, canDeleteProperties: canDeletePropertiesFlag }){
   const uname = (username || '').trim();
   const usernameLower = uname.toLowerCase();
   if(!/^[a-z0-9._-]{3,32}$/.test(usernameLower)){
@@ -1519,6 +1614,9 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
     isCompanyAdmin: role === 'trade' ? !!isCompanyAdmin : false,
     mobile: role === 'trade' ? (mobile || '').trim() : null,
     email: role === 'trade' ? (email || '').trim() : null,
+    // Only the global admin can grant this, and only to other Admin
+    // accounts — see isGlobalAdmin()/canDeleteProperties() above.
+    canDeleteProperties: (role === 'admin' && isGlobalAdmin()) ? !!canDeletePropertiesFlag : false,
     // Stored so Admin/Staff/Trade can view it in Settings, per a deliberate
     // (and explicitly flagged) product decision — see the security note in
     // SETUP.md for what this trades away.
@@ -1551,10 +1649,20 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
 // to remove and re-create the account for that. Firestore rules mirror
 // the same boundary this checks client-side: Admin can edit anyone,
 // Staff can only edit Trade accounts within their own region(s).
-async function adminUpdateUser(target, { firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick }){
-  const role = target.role;
+// Edits an existing account's details. Username and password are
+// deliberately not editable here (username is the Auth sign-in key, and
+// password changes go through the dedicated reset flow instead — see
+// resetUserPassword). Role CAN be changed here, Admin only — switching
+// role reshapes which other fields apply (Trade needs a company, Admin
+// implicitly covers both regions, etc.), same rules as creating a new
+// account with that role.
+async function adminUpdateUser(target, { newRole, firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick, canDeleteProperties: canDeletePropertiesFlag }){
+  const role = newRole || target.role;
   if(!isAdmin() && role !== 'trade'){
     throw new Error('Staff can only edit Trade accounts.');
+  }
+  if(!isAdmin() && newRole && newRole !== target.role){
+    throw new Error('Only Admin can change an account\'s role.');
   }
   if((role === 'admin' || role === 'staff') && !(firstName || '').trim()){
     throw new Error('First name is required for Admin and Staff accounts.');
@@ -1572,6 +1680,7 @@ async function adminUpdateUser(target, { firstName, lastName, companyName, mobil
   }
 
   const update = {
+    role,
     firstName: (role === 'admin' || role === 'staff') ? (firstName || '').trim() : ((firstName || '').trim() || null),
     lastName: (role === 'admin' || role === 'staff') ? (lastName || '').trim() : ((lastName || '').trim() || null),
     companyName: role === 'trade' ? companyNameTrim : null,
@@ -1599,13 +1708,29 @@ async function adminUpdateUser(target, { firstName, lastName, companyName, mobil
     }
     update.regions = regions;
     // If the account's active list is no longer valid under the new
-    // region set, fall back to "both merged" rather than leaving it
-    // pointing at a region the account can no longer see.
+    // region set (or it just became Trade/Staff from Admin, which has no
+    // prior single-region history), fall back to "both merged" rather
+    // than leaving it pointing somewhere it can no longer see.
     if(regions.length > 1){
       update.lastListId = target.lastListId && regions.includes(target.lastListId) ? target.lastListId : 'ALL';
     } else {
       update.lastListId = regions[0];
     }
+  } else {
+    update.regions = firebase.firestore.FieldValue.delete();
+  }
+
+  // Only ever set this when the checkbox was actually shown for this
+  // edit (global admin, editing another Admin account) — canDeletePropertiesFlag
+  // is null otherwise, and we leave the existing value on the account
+  // untouched rather than silently clearing it just because, say, Staff
+  // saved an unrelated edit on their own record.
+  if(role === 'admin' && isGlobalAdmin() && canDeletePropertiesFlag !== null){
+    update.canDeleteProperties = !!canDeletePropertiesFlag;
+  } else if(role !== 'admin' && target.canDeleteProperties){
+    // Switching an account away from Admin also revokes this — it only
+    // ever makes sense for Admin accounts.
+    update.canDeleteProperties = false;
   }
 
   await db.collection('users').doc(target.uid).set(update, { merge: true });
@@ -1617,7 +1742,8 @@ async function adminUpdateUser(target, { firstName, lastName, companyName, mobil
     role: userProfile ? userProfile.role : null,
     targetUid: target.uid,
     targetUsername: target.username,
-    targetRole: role
+    targetRole: role,
+    roleChanged: role !== target.role ? `${roleLabel(target.role)} → ${roleLabel(role)}` : null
   });
 }
 
@@ -1633,32 +1759,38 @@ async function adminUpdateUser(target, { firstName, lastName, companyName, mobil
 // back to the Cloud Function if the account's current password isn't on
 // file at all (e.g. an account created before password storage existed —
 // see SETUP.md for deploying that as a backstop).
+// Resets an existing account's password entirely on this page and on the
+// free (Spark) Firebase plan — no Cloud Function needed. Changing another
+// user's Firebase Auth password normally requires backend privileges —
+// but since this app already stores each account's current plaintext
+// password by deliberate design (see the note on adminCreateUser above),
+// we can instead briefly sign into the isolated secondary Firebase App
+// AS the target account (using their currently-known password), call
+// updatePassword() on that session, then sign the secondary app back
+// out. This never touches the admin's own active session.
+// Only reachable when the account has a known current password — the
+// Users tab hides this path entirely (showing "Remove & recreate"
+// instead) for the one case it can't cover: an account with no password
+// on file at all, from before password storage existed.
 async function resetUserPassword(uid, newPassword){
   const target = usersListCache.find(x => x.uid === uid);
   if(!target) throw new Error('Could not find that account — refresh and try again.');
   if(!newPassword || newPassword.length < 6){
     throw new Error('New password must be at least 6 characters.');
   }
+  if(!target.password){
+    throw new Error('This account has no current password on file (it predates password storage) — use "Remove & recreate this account" instead.');
+  }
 
-  if(target.password){
-    const secAuth = getSecondaryApp().auth();
-    try{
-      const cred = await secAuth.signInWithEmailAndPassword(usernameToEmail(target.usernameLower), target.password);
-      await cred.user.updatePassword(newPassword);
-    }catch(e){
-      console.error('Self-serve password reset failed', e);
-      throw new Error('Could not sign in as that account with its stored password — it may be out of sync with the real one. Try again, or deploy the optional Cloud Function (see SETUP.md / functions/index.js) as a backstop.');
-    } finally {
-      try{ await secAuth.signOut(); }catch(e){}
-    }
-  } else {
-    try{
-      const callable = firebase.app().functions().httpsCallable('adminResetPassword');
-      await callable({ uid, newPassword });
-    }catch(e){
-      console.error('adminResetPassword failed', e);
-      throw new Error('This account has no current password on file (it predates password storage), so it can\'t be reset here — deploy the optional Cloud Function first (see SETUP.md / functions/index.js), or remove and recreate the account.');
-    }
+  const secAuth = getSecondaryApp().auth();
+  try{
+    const cred = await secAuth.signInWithEmailAndPassword(usernameToEmail(target.usernameLower), target.password);
+    await cred.user.updatePassword(newPassword);
+  }catch(e){
+    console.error('Self-serve password reset failed', e);
+    throw new Error('Could not sign in as that account with its stored password — it may be out of sync with the real one. Try again, or use "Remove & recreate this account" instead.');
+  } finally {
+    try{ await secAuth.signOut(); }catch(e){}
   }
 
   await db.collection('users').doc(uid).set({ password: newPassword }, { merge: true });
@@ -1675,39 +1807,83 @@ async function resetUserPassword(uid, newPassword){
   });
 }
 
+// Core removal: deletes the Firestore users/{uid} doc (this is what
+// actually revokes app access), the username reservation, and — when the
+// account's current password is known — the underlying Firebase Auth
+// sign-in record too, using the same self-serve trick as password resets:
+// briefly sign into the isolated secondary Firebase App AS that account
+// (since we already know its current password) and call the Auth SDK's
+// own delete() on that session. Works on the free plan, no Cloud Function
+// needed. When the password isn't known (a legacy account from before
+// password storage existed), the Auth record can't be signed into and so
+// survives as a harmless orphan — see the "remove & recreate" flow's
+// legacy-box copy for the manual Firebase-console cleanup step for that
+// case.
+async function removeUserCore(uid, usernameLower, username, role, password){
+  await db.collection('users').doc(uid).delete();
+  if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
+
+  addAuditLogEntry({
+    type: 'account_removed',
+    uid: currentUser ? currentUser.uid : null,
+    username: userProfile ? userProfile.username : 'unknown',
+    role: userProfile ? userProfile.role : null,
+    targetUid: uid,
+    targetUsername: username,
+    targetRole: role
+  });
+
+  if(password && usernameLower){
+    const secAuth = getSecondaryApp().auth();
+    try{
+      const cred = await secAuth.signInWithEmailAndPassword(usernameToEmail(usernameLower), password);
+      await cred.user.delete();
+    }catch(e){
+      console.error('Could not delete the Auth sign-in record for', username, e);
+      // Not fatal — the Firestore doc (the part that actually grants app
+      // access) is already gone; the Auth record just survives as an
+      // orphan until it's cleaned up by hand in the Firebase console.
+    } finally {
+      try{ await secAuth.signOut(); }catch(e){}
+    }
+  }
+}
+
 async function removeUser(uid, usernameLower, username, role){
+  const target = usersListCache.find(x => x.uid === uid);
   if(!confirm(`Remove account "${username}" (${roleLabel(role)})? They will no longer be able to sign in or access any data. Their past activity log and audit log entries are kept for the record — only the account itself is removed.`)) return;
   try{
-    await db.collection('users').doc(uid).delete();
-    if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
-
-    // Record the deletion itself in the audit log — kept forever like every
-    // other audit entry (subject to the normal 30-day TTL), even though the
-    // account and its username mapping are now gone.
-    addAuditLogEntry({
-      type: 'account_removed',
-      uid: currentUser ? currentUser.uid : null,
-      username: userProfile ? userProfile.username : 'unknown',
-      role: userProfile ? userProfile.role : null,
-      targetUid: uid,
-      targetUsername: username,
-      targetRole: role
-    });
-
-    try{
-      await firebase.app().functions().httpsCallable('adminDeleteAuthUser')({ uid });
-    }catch(e){
-      // Optional — without the Cloud Function the Auth record survives as
-      // a harmless orphan (no Firestore role doc = no app access under the
-      // security rules) until it's deployed or cleaned up in the console.
-    }
+    await removeUserCore(uid, usernameLower, username, role, target ? target.password : null);
     toast(`Removed "${username}"`, 'ok');
+    selectedUserUids.delete(uid);
     await renderUsersTab();
     State.auditLog = await loadAuditLog();
     renderAuditLog();
   }catch(e){
     toast('Could not remove that account: ' + e.message, 'err');
   }
+}
+
+// Bulk version — one confirm for the whole batch, then removes each in
+// turn. Used by the selection toolbar above the Users table.
+async function removeUsers(users){
+  if(!users.length) return;
+  const names = users.map(u => `"${u.username}" (${roleLabel(u.role)})`).join(', ');
+  if(!confirm(`Remove ${users.length} account${users.length>1?'s':''} — ${names}? They will no longer be able to sign in or access any data. Past activity/audit log entries are kept for the record.`)) return;
+  let okCount = 0;
+  for(const u of users){
+    try{
+      await removeUserCore(u.uid, u.usernameLower, u.username, u.role, u.password);
+      okCount++;
+    }catch(e){
+      toast(`Could not remove "${u.username}": ` + e.message, 'err');
+    }
+  }
+  selectedUserUids.clear();
+  toast(`Removed ${okCount} of ${users.length} account${users.length>1?'s':''}`, 'ok');
+  await renderUsersTab();
+  State.auditLog = await loadAuditLog();
+  renderAuditLog();
 }
 
 /* ============================= EMAIL INVITE TEMPLATE ============================= */
@@ -1767,6 +1943,37 @@ async function openEmailTemplate(user, password){
   };
 }
 
+// Multi-account version — used by the Users tab's bulk "Email details"
+// action. Builds one combined email with each selected account's login
+// details as its own block (same per-account template, just repeated),
+// and pre-fills "To" with whichever selected accounts have an email
+// address on file (Trade accounts only — Admin/Staff don't collect one,
+// same as the single-account version, which leaves "To" blank for them).
+async function openEmailTemplateMulti(users){
+  const tpl = await loadEmailTemplate();
+  const blocks = users.map(u => fillTemplate(tpl.body, {
+    greetingName: computeGreetingName(u),
+    username: u.username,
+    password: u.password,
+    role: roleLabel(u.role),
+    company: u.companyName || '',
+    loginUrl: tpl.loginUrl || DEFAULT_EMAIL_TEMPLATE.loginUrl
+  }));
+  const box = document.getElementById('emailTemplateBox');
+  const body = document.getElementById('emailTemplateBody');
+  body.value = blocks.join('\n\n' + '-'.repeat(40) + '\n\n');
+  box.dataset.subject = users.length === 1
+    ? fillTemplate(tpl.subject, { greetingName: computeGreetingName(users[0]) })
+    : `Your Field GeoTag Kit login details (${users.length} accounts)`;
+  const toAddrs = users.map(u => u.email).filter(Boolean).join(',');
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('openMailBtn').onclick = (e)=>{
+    e.preventDefault();
+    window.location.href = `mailto:${toAddrs}?subject=${encodeURIComponent(box.dataset.subject || '')}&body=${encodeURIComponent(body.value)}`;
+  };
+}
+
 function bindEmailTemplateTab(){
   document.getElementById('saveTemplateBtn').addEventListener('click', async ()=>{
     const tpl = {
@@ -1805,15 +2012,20 @@ async function loadUsersList(){
     let snap;
     if(isAdmin()) snap = await db.collection('users').orderBy('username').get();
     else {
-      // Staff sees other Staff accounts, plus Trade accounts (region-filtered below).
+      // Staff sees other Staff accounts (any region) plus Trade accounts
+      // within their own region(s). The Trade query MUST filter by region
+      // in the query itself (array-contains-any), not just client-side —
+      // Firestore rejects the entire query outright if the security rule
+      // can't be statically verified for every document the query's own
+      // where-clauses could match, and "regions overlap" isn't otherwise
+      // guaranteed just from role=='trade' alone.
+      const own = myRegions();
       const [staffSnap, tradeSnap] = await Promise.all([
         db.collection('users').where('role', '==', 'staff').get(),
-        db.collection('users').where('role', '==', 'trade').get()
+        own.length ? db.collection('users').where('role', '==', 'trade').where('regions', 'array-contains-any', own).get() : Promise.resolve({ docs: [] })
       ]);
       const staffUsers = staffSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-      let tradeUsers = tradeSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-      const own = myRegions();
-      tradeUsers = tradeUsers.filter(u => accountRegions(u).some(r => own.includes(r)));
+      const tradeUsers = tradeSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
       return staffUsers.concat(tradeUsers).sort((a,b)=> (a.username||'').localeCompare(b.username||''));
     }
     return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
@@ -1843,11 +2055,16 @@ function populateRegionPicker(selectEl, allowedRegionIds){
 let usersListCache = [];
 let usersFilterValue = 'all';
 let usersSearchValue = '';
+let usersCompanyFilterValue = 'all';
+let selectedUserUids = new Set();
 let knownCompanies = []; // distinct Trade company names seen so far, shared by the add and edit forms
 
-// Applies both the role filter and the search box to usersListCache.
+// Applies the role filter, company filter, and the search box to usersListCache.
 function filteredUsersList(){
   let users = usersFilterValue === 'all' ? usersListCache : usersListCache.filter(u => u.role === usersFilterValue);
+  if(usersCompanyFilterValue !== 'all'){
+    users = users.filter(u => u.companyName === usersCompanyFilterValue);
+  }
   const q = usersSearchValue.trim().toLowerCase();
   if(q){
     users = users.filter(u => {
@@ -1876,8 +2093,10 @@ async function renderUsersTab(){
 
   usersListCache = await loadUsersList();
   document.getElementById('usersCount').textContent = usersListCache.length;
+  // Selection can only contain accounts still present in the current list.
+  selectedUserUids = new Set(Array.from(selectedUserUids).filter(uid => usersListCache.some(u => u.uid === uid)));
 
-  // Keep the company dropdown current (distinct company names seen so far).
+  // Keep the company dropdowns current (distinct company names seen so far).
   const companies = Array.from(new Set(usersListCache.filter(u=>u.role==='trade' && u.companyName).map(u=>u.companyName))).sort();
   knownCompanies = companies;
   const companySel = document.getElementById('newUserCompanySelect');
@@ -1886,6 +2105,13 @@ async function renderUsersTab(){
     + `<option value="__NEW__">+ New company…</option>`;
   companySel.value = companies.includes(prevVal) ? prevVal : (companies[0] || '__NEW__');
   document.getElementById('newUserCompany').style.display = companySel.value === '__NEW__' ? '' : 'none';
+
+  const companyFilterSel = document.getElementById('usersCompanyFilterSelect');
+  const prevFilterVal = companyFilterSel.value;
+  companyFilterSel.innerHTML = `<option value="all">All companies</option>` +
+    companies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('');
+  companyFilterSel.value = (prevFilterVal === 'all' || companies.includes(prevFilterVal)) ? prevFilterVal : 'all';
+  usersCompanyFilterValue = companyFilterSel.value;
 
   renderUsersTable();
 }
@@ -1897,10 +2123,10 @@ function renderUsersTable(){
   const body = document.getElementById('usersTableBody');
   if(!users.length){
     body.innerHTML = '<tr><td colspan="5"><div class="empty-state">No accounts match this filter.</div></td></tr>';
+    updateBulkToolbar();
     return;
   }
   body.innerHTML = users.map(u => {
-    const canManage = isAdmin() || u.role === 'trade';
     const isSelf = currentUser && u.uid === currentUser.uid;
     const active = !!u.lastLoginAt;
     const showPw = canViewPassword(u.role) && u.password;
@@ -1915,20 +2141,13 @@ function renderUsersTable(){
     }
     return `
     <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
-      <td>${escapeHtml(u.username || '—')}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
+      <td><input type="checkbox" class="user-select-cb" value="${escapeAttr(u.uid)}" ${selectedUserUids.has(u.uid) ? 'checked' : ''} aria-label="Select ${escapeAttr(u.username||'')}"${isSelf ? ' title="This is you"' : ''}></td>
+      <td>${escapeHtml(u.username || '—')}${isSelf ? ` <span style="color:var(--text-faint); font-size:11px;">(you)</span>` : ''}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
         ${showPw ? `<div class="reveal-password" style="margin-top:4px;"><span class="mono-input" data-pwtext style="display:inline-block; padding:2px 8px; font-size:11px;">••••••••</span><button type="button" data-act="togglepw" aria-label="Show password" title="Show password">${EYE_ICON}</button></div>` : ''}
       </td>
       <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
       <td>${escapeHtml(regionsLabel(accountRegions(u)))}</td>
       <td><span class="status-pill ${active?'active':'pending'}"><span class="dot"></span>${active?'Active':'Pending'}</span></td>
-      <td>
-        <div class="user-actions">
-          ${canManage ? `<button class="btn small ghost" data-act="edit">Edit</button>` : ''}
-          ${canManage ? `<button class="btn small ghost" data-act="reset">Reset password</button>` : ''}
-          ${showPw ? `<button class="btn small ghost" data-act="email">Email details</button>` : ''}
-          ${canManage && !isSelf ? `<button class="btn small ghost danger" data-act="remove">Remove</button>` : ''}
-        </div>
-      </td>
     </tr>`;
   }).join('');
 
@@ -1943,33 +2162,41 @@ function renderUsersTable(){
       btn.title = btn.ariaLabel = revealed ? 'Show password' : 'Hide password';
     });
   });
-  body.querySelectorAll('[data-act="edit"]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
-      if(u) openEditUser(u);
+  body.querySelectorAll('.user-select-cb').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(cb.checked) selectedUserUids.add(cb.value); else selectedUserUids.delete(cb.value);
+      updateBulkToolbar();
     });
   });
-  body.querySelectorAll('[data-act="reset"]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
-      if(u) openResetPassword(u);
-    });
-  });
-  body.querySelectorAll('[data-act="email"]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      const u = usersListCache.find(x => x.uid === tr.dataset.uid);
-      if(u) openEmailTemplate(u, u.password);
-    });
-  });
-  body.querySelectorAll('[data-act="remove"]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tr = btn.closest('tr');
-      removeUser(tr.dataset.uid, tr.dataset.namelower, tr.dataset.username, tr.dataset.role);
-    });
-  });
+  updateBulkToolbar();
+}
+
+// Enables/disables the bulk-action toolbar buttons based on the current
+// selection: Edit and Reset password only make sense for exactly one
+// account at a time; Email details and Remove work across any number.
+function updateBulkToolbar(){
+  const bar = document.getElementById('usersBulkBar');
+  const selectAllCb = document.getElementById('usersSelectAllCb');
+  const uids = Array.from(selectedUserUids);
+  const visibleUids = filteredUsersList().map(u => u.uid);
+  document.getElementById('usersSelectedCount').textContent = uids.length;
+  bar.style.display = uids.length ? 'flex' : 'none';
+  if(selectAllCb){
+    selectAllCb.checked = visibleUids.length > 0 && visibleUids.every(uid => selectedUserUids.has(uid));
+    selectAllCb.indeterminate = !selectAllCb.checked && visibleUids.some(uid => selectedUserUids.has(uid));
+  }
+
+  const users = uids.map(id => usersListCache.find(u => u.uid === id)).filter(Boolean);
+  const single = users.length === 1 ? users[0] : null;
+  const singleCanManage = !!single && (isAdmin() || single.role === 'trade');
+  document.getElementById('bulkEditBtn').disabled = !singleCanManage;
+  document.getElementById('bulkResetBtn').disabled = !singleCanManage;
+
+  const emailable = users.filter(u => canViewPassword(u.role) && u.password);
+  document.getElementById('bulkEmailBtn').disabled = !emailable.length;
+
+  const removable = users.length > 0 && users.every(u => (isAdmin() || u.role === 'trade') && !(currentUser && u.uid === currentUser.uid));
+  document.getElementById('bulkRemoveBtn').disabled = !removable;
 }
 
 function updateAddUserFormVisibility(){
@@ -1979,11 +2206,65 @@ function updateAddUserFormVisibility(){
   document.getElementById('newUserEmailRow').style.display = role === 'trade' ? '' : 'none';
   document.getElementById('newUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
   document.getElementById('newUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
+
+  const canDeleteBox = document.getElementById('newUserCanDeleteBox');
+  const showCanDelete = isGlobalAdmin() && role === 'admin';
+  canDeleteBox.style.display = showCanDelete ? 'flex' : 'none';
+  if(showCanDelete) document.getElementById('newUserCanDeleteGrantorLabel').textContent = GLOBAL_ADMIN_USERNAME;
+  if(!showCanDelete) document.getElementById('newUserCanDelete').checked = false;
+}
+
+// Shows/hides the role-dependent fields in the Edit form for whichever
+// role is currently selected (which may differ from the account's actual
+// current role, if Admin is changing it). `u` is only used to prefill
+// values when `role` still matches the account's original role.
+function refreshEditUserFieldsForRole(u, role){
+  document.getElementById('editUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
+  document.getElementById('editUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
+  document.getElementById('editUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
+  document.getElementById('editUserEmailRow').style.display = role === 'trade' ? '' : 'none';
+
+  const companySel = document.getElementById('editUserCompanySelect');
+  const companyField = document.getElementById('editUserCompany');
+  if(role === 'trade' && role === u.role && u.companyName && knownCompanies.includes(u.companyName)){
+    companySel.value = u.companyName;
+    companyField.style.display = 'none';
+    companyField.value = '';
+  } else {
+    companySel.value = '__NEW__';
+    companyField.style.display = '';
+    companyField.value = (role === u.role) ? (u.companyName || '') : '';
+  }
+
+  const regionBox = document.getElementById('editUserRegionBox');
+  if(role === 'admin'){
+    regionBox.innerHTML = `<label class="field-label">Region</label> <span class="mono-input" style="display:inline-block; padding:8px 12px;">All Regions</span>`;
+  } else {
+    const allowedRegionIds = isAdmin() ? ALL_REGION_IDS : myRegions();
+    regionBox.innerHTML = `<label class="field-label">Region</label><select id="editUserRegion" class="mono-input" style="width:100%;"></select>`;
+    populateRegionPicker(document.getElementById('editUserRegion'), allowedRegionIds);
+    // Only carry over the account's actual current regions if the role
+    // wasn't changed — switching roles has no sensible region default.
+    const currentRegions = (role === u.role) ? accountRegions(u) : [];
+    document.getElementById('editUserRegion').value = currentRegions.length > 1 ? 'BOTH' : (currentRegions[0] || allowedRegionIds[0] || '');
+  }
+
+  // The global admin always has this permission implicitly, so there's
+  // nothing to grant/revoke on their own account — only shown for other
+  // Admin accounts, and only to the global admin themselves.
+  const canDeleteBox = document.getElementById('editUserCanDeleteBox');
+  const showCanDelete = isGlobalAdmin() && role === 'admin' && u.usernameLower !== GLOBAL_ADMIN_USERNAME;
+  canDeleteBox.style.display = showCanDelete ? 'flex' : 'none';
+  if(showCanDelete){
+    document.getElementById('editUserCanDeleteGrantorLabel').textContent = GLOBAL_ADMIN_USERNAME;
+    document.getElementById('editUserCanDelete').checked = (role === u.role) ? (u.canDeleteProperties === true) : false;
+  }
 }
 
 // Opens the edit form for an existing account, pre-filled with its
-// current details. Username, password and role are deliberately not
-// editable here — see the comment on adminUpdateUser for why.
+// current details. Username and password are deliberately not editable
+// here (see the comment on adminUpdateUser for why) — Admin can change
+// the account's role, though, which reshapes the rest of the form.
 function openEditUser(u){
   document.getElementById('addUserBox').style.display = 'none';
   document.getElementById('emailTemplateBox').style.display = 'none';
@@ -1997,41 +2278,25 @@ function openEditUser(u){
 
   document.getElementById('editUserFirstName').value = u.firstName || '';
   document.getElementById('editUserLastName').value = u.lastName || '';
-  document.getElementById('editUserFirstNameLabel').textContent = role === 'trade' ? 'First name (optional)' : 'First name';
-  document.getElementById('editUserLastNameLabel').textContent = role === 'trade' ? 'Last name (optional)' : 'Last name';
-
-  document.getElementById('editUserTradeFieldsBox').style.display = role === 'trade' ? '' : 'none';
-  document.getElementById('editUserEmailRow').style.display = role === 'trade' ? '' : 'none';
-
-  const companySel = document.getElementById('editUserCompanySelect');
-  companySel.innerHTML = knownCompanies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')
-    + `<option value="__NEW__">+ New company…</option>`;
-  const companyField = document.getElementById('editUserCompany');
-  if(role === 'trade' && u.companyName && knownCompanies.includes(u.companyName)){
-    companySel.value = u.companyName;
-    companyField.style.display = 'none';
-    companyField.value = '';
-  } else {
-    companySel.value = '__NEW__';
-    companyField.style.display = '';
-    companyField.value = u.companyName || '';
-  }
   document.getElementById('editUserMobile').value = u.mobile || '';
   document.getElementById('editUserEmail').value = u.email || '';
   document.getElementById('editUserCompanyAdmin').checked = !!u.isCompanyAdmin;
 
-  // Region picker — Admin accounts are always both regions, implicitly,
-  // so there's nothing to pick for them.
-  const regionBox = document.getElementById('editUserRegionBox');
-  if(role === 'admin'){
-    regionBox.innerHTML = `<label class="field-label">Region</label> <span class="mono-input" style="display:inline-block; padding:8px 12px;">All Regions</span>`;
+  const roleRow = document.getElementById('editUserRoleRow');
+  const roleSelect = document.getElementById('editUserRole');
+  if(isAdmin()){
+    roleRow.style.display = '';
+    roleSelect.value = role;
+    roleSelect.onchange = () => refreshEditUserFieldsForRole(u, roleSelect.value);
   } else {
-    const allowedRegionIds = isAdmin() ? ALL_REGION_IDS : myRegions();
-    regionBox.innerHTML = `<label class="field-label">Region</label><select id="editUserRegion" class="mono-input" style="width:100%;"></select>`;
-    populateRegionPicker(document.getElementById('editUserRegion'), allowedRegionIds);
-    const currentRegions = accountRegions(u);
-    document.getElementById('editUserRegion').value = currentRegions.length > 1 ? 'BOTH' : (currentRegions[0] || '');
+    roleRow.style.display = 'none';
   }
+
+  const companySel = document.getElementById('editUserCompanySelect');
+  companySel.innerHTML = knownCompanies.map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')
+    + `<option value="__NEW__">+ New company…</option>`;
+
+  refreshEditUserFieldsForRole(u, role);
 
   box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2061,6 +2326,9 @@ function openResetPassword(u){
   document.getElementById('resetPasswordLegacyBox').style.display = hasKnownPassword ? 'none' : '';
   document.getElementById('confirmResetPasswordBtn').style.display = hasKnownPassword ? '' : 'none';
   document.getElementById('removeAndRecreateBtn').style.display = hasKnownPassword ? 'none' : '';
+  if(!hasKnownPassword){
+    document.getElementById('legacyEmailHint').textContent = usernameToEmail((u.usernameLower || u.username || '').toLowerCase());
+  }
 
   box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2098,9 +2366,45 @@ function bindUsersTab(){
     usersFilterValue = e.target.value;
     renderUsersTable();
   });
+  document.getElementById('usersCompanyFilterSelect').addEventListener('change', (e)=>{
+    usersCompanyFilterValue = e.target.value;
+    renderUsersTable();
+  });
   document.getElementById('usersSearch').addEventListener('input', (e)=>{
     usersSearchValue = e.target.value;
     renderUsersTable();
+  });
+  document.getElementById('usersSelectAllCb').addEventListener('change', (e)=>{
+    const checked = e.target.checked;
+    filteredUsersList().forEach(u => { if(checked) selectedUserUids.add(u.uid); else selectedUserUids.delete(u.uid); });
+    renderUsersTable();
+  });
+  document.getElementById('bulkClearBtn').addEventListener('click', ()=>{
+    selectedUserUids.clear();
+    renderUsersTable();
+  });
+  document.getElementById('bulkEditBtn').addEventListener('click', ()=>{
+    const uid = Array.from(selectedUserUids)[0];
+    const u = usersListCache.find(x => x.uid === uid);
+    if(u) openEditUser(u);
+  });
+  document.getElementById('bulkResetBtn').addEventListener('click', ()=>{
+    const uid = Array.from(selectedUserUids)[0];
+    const u = usersListCache.find(x => x.uid === uid);
+    if(u) openResetPassword(u);
+  });
+  document.getElementById('bulkEmailBtn').addEventListener('click', ()=>{
+    const users = Array.from(selectedUserUids).map(id => usersListCache.find(u => u.uid === id)).filter(Boolean);
+    const emailable = users.filter(u => canViewPassword(u.role) && u.password);
+    if(!emailable.length){ toast('No password on file for the selected account(s) to email.', 'err'); return; }
+    if(emailable.length < users.length){
+      toast(`${users.length - emailable.length} of the selected account(s) skipped — no password on file.`, 'err');
+    }
+    openEmailTemplateMulti(emailable);
+  });
+  document.getElementById('bulkRemoveBtn').addEventListener('click', ()=>{
+    const users = Array.from(selectedUserUids).map(id => usersListCache.find(u => u.uid === id)).filter(Boolean);
+    removeUsers(users);
   });
   document.getElementById('exportUsersBtn').addEventListener('click', ()=>{
     const users = filteredUsersList();
@@ -2121,10 +2425,11 @@ function bindUsersTab(){
     const firstName = document.getElementById('newUserFirstName').value;
     const lastName = document.getElementById('newUserLastName').value;
     const isCompanyAdmin = document.getElementById('newUserCompanyAdmin').checked;
+    const canDeletePropertiesFlag = document.getElementById('newUserCanDelete').checked;
     const btn = document.getElementById('createUserBtn');
     btn.disabled = true;
     try{
-      const { uid, username: uname } = await adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin });
+      const { uid, username: uname } = await adminCreateUser({ username, password, role, regionsPick, companyName, mobile, email, firstName, lastName, isCompanyAdmin, canDeleteProperties: canDeletePropertiesFlag });
       document.getElementById('addUserBox').style.display = 'none';
       openEmailTemplate({ username: uname, role, companyName, isCompanyAdmin, firstName }, password);
       toast(`Account "${uname}" created`, 'ok');
@@ -2153,19 +2458,23 @@ function bindUsersTab(){
       errBox.textContent = 'Could not find that account — refresh the page and try again.';
       return;
     }
+    const roleSelectEl = document.getElementById('editUserRole');
+    const newRole = (isAdmin() && roleSelectEl) ? roleSelectEl.value : target.role;
     const firstName = document.getElementById('editUserFirstName').value;
     const lastName = document.getElementById('editUserLastName').value;
     const companySel = document.getElementById('editUserCompanySelect').value;
-    const companyName = target.role === 'trade' ? (companySel === '__NEW__' ? document.getElementById('editUserCompany').value : companySel) : '';
+    const companyName = newRole === 'trade' ? (companySel === '__NEW__' ? document.getElementById('editUserCompany').value : companySel) : '';
     const mobile = document.getElementById('editUserMobile').value;
     const email = document.getElementById('editUserEmail').value;
     const isCompanyAdmin = document.getElementById('editUserCompanyAdmin').checked;
     const regionSelectEl = document.getElementById('editUserRegion');
     const regionsPick = regionSelectEl ? regionSelectEl.value : null;
+    const canDeleteBoxEl = document.getElementById('editUserCanDeleteBox');
+    const canDeletePropertiesFlag = (canDeleteBoxEl.style.display !== 'none') ? document.getElementById('editUserCanDelete').checked : null;
     const btn = document.getElementById('saveEditUserBtn');
     btn.disabled = true;
     try{
-      await adminUpdateUser(target, { firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick });
+      await adminUpdateUser(target, { newRole, firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick, canDeleteProperties: canDeletePropertiesFlag });
       document.getElementById('editUserBox').style.display = 'none';
       toast(`Account "${target.username}" updated`, 'ok');
       await renderUsersTab();
@@ -2227,6 +2536,9 @@ function bindUsersTab(){
     document.getElementById('newUserEmail').value = target.email || '';
     document.getElementById('newUserCompanyAdmin').checked = !!target.isCompanyAdmin;
     updateAddUserFormVisibility();
+    if(isGlobalAdmin() && target.role === 'admin'){
+      document.getElementById('newUserCanDelete').checked = target.canDeleteProperties === true;
+    }
     const regions = accountRegions(target);
     const listSel = document.getElementById('newUserList');
     if(listSel) listSel.value = regions.length > 1 ? 'BOTH' : (regions[0] || '');
@@ -2292,6 +2604,18 @@ function fmtAuditEntry(e){
     return `<div class="audit-item">
       <div class="top-row"><span class="kind created">Account created</span><span class="ts">${ts}</span></div>
       <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) created "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})</div>
+    </div>`;
+  }
+  if(e.type === 'account_updated'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind updated">Account updated</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) updated "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})${e.roleChanged ? ` · role changed: ${escapeHtml(e.roleChanged)}` : ''}</div>
+    </div>`;
+  }
+  if(e.type === 'password_reset'){
+    return `<div class="audit-item">
+      <div class="top-row"><span class="kind updated">Password reset</span><span class="ts">${ts}</span></div>
+      <div class="detail">${escapeHtml(e.username||'unknown')} (${roleLabel(e.role)}) reset the password for "${escapeHtml(e.targetUsername||'unknown')}" (${roleLabel(e.targetRole)})</div>
     </div>`;
   }
   return `<div class="audit-item">
@@ -2971,6 +3295,74 @@ function bindCompressionToggle(){
   });
 }
 
+/* ============================= FIRST-TIME SETUP WIZARD =============================
+   Shown once per (account, device) right after the first successful login
+   on that device — walks through the two settings that matter most before
+   a first job: the auto-save folder (Chrome/Edge only) and photo
+   compression. Both steps are skippable; nothing here is required to use
+   the app. Tracked in localStorage rather than Firestore, deliberately —
+   the folder itself is already a per-device setting (see loadAutoSaveDir
+   above), so re-showing this on a new device is actually useful, not
+   just a one-time account thing. */
+function setupWizardSeenKey(){ return 'geotag-setup-wizard-seen:' + (currentUser ? currentUser.uid : 'anon'); }
+function hasSeenSetupWizard(){
+  try{ return localStorage.getItem(setupWizardSeenKey()) === '1'; }catch(e){ return true; }
+}
+function markSetupWizardSeen(){
+  try{ localStorage.setItem(setupWizardSeenKey(), '1'); }catch(e){}
+}
+let setupWizardStep = 1;
+function maybeShowSetupWizard(){
+  if(hasSeenSetupWizard()) return;
+  setupWizardStep = 1;
+  renderSetupWizardStep();
+  document.getElementById('setupWizardOverlay').classList.remove('hidden');
+}
+function closeSetupWizard(){
+  markSetupWizardSeen();
+  document.getElementById('setupWizardOverlay').classList.add('hidden');
+}
+function renderSetupWizardStep(){
+  document.getElementById('setupWizardStepLabel').textContent = `Step ${setupWizardStep} of 2`;
+  document.getElementById('setupWizardStep1').style.display = setupWizardStep === 1 ? '' : 'none';
+  document.getElementById('setupWizardStep2').style.display = setupWizardStep === 2 ? '' : 'none';
+  document.getElementById('setupWizardNextBtn').textContent = setupWizardStep === 2 ? 'Finish' : 'Next';
+
+  if(setupWizardStep === 1){
+    const folderBtn = document.getElementById('setupWizardChooseFolderBtn');
+    const status = document.getElementById('setupWizardFolderStatus');
+    if(!HAS_DIR_PICKER){
+      folderBtn.style.display = 'none';
+      status.textContent = 'Folder auto-save needs Chrome or Edge — in this browser, you\'ll use "Download ZIP" and choose the folder each time instead. Nothing to set up here.';
+    } else {
+      folderBtn.style.display = '';
+      status.textContent = autoSaveDirHandle ? `Saving to "${State.autoSaveDirName}" on this device.` : '';
+    }
+  } else {
+    document.getElementById('setupWizardCompressToggle').checked = compressionEnabled;
+  }
+}
+function bindSetupWizard(){
+  document.getElementById('setupWizardChooseFolderBtn').addEventListener('click', async ()=>{
+    await chooseAutoSaveFolder();
+    renderSetupWizardStep();
+  });
+  document.getElementById('setupWizardCompressToggle').addEventListener('change', (e)=>{
+    compressionEnabled = e.target.checked;
+    saveCompressionSetting(compressionEnabled);
+    const mainToggle = document.getElementById('compressToggle');
+    if(mainToggle) mainToggle.checked = compressionEnabled;
+  });
+  document.getElementById('setupWizardSkipBtn').addEventListener('click', ()=>{
+    if(setupWizardStep === 1){ setupWizardStep = 2; renderSetupWizardStep(); }
+    else closeSetupWizard();
+  });
+  document.getElementById('setupWizardNextBtn').addEventListener('click', ()=>{
+    if(setupWizardStep === 1){ setupWizardStep = 2; renderSetupWizardStep(); }
+    else closeSetupWizard();
+  });
+}
+
 /* ============================= SUPPORT TAB (Trade only) ============================= */
 const SUPPORT_STEPS = [
   { title: 'Sign in', body: 'Use the username and password your Admin or Staff manager gave you. If you\'ve forgotten either, contact your Switched On Housing representative — only an Admin or Staff account can reset a password.' },
@@ -3252,11 +3644,12 @@ function renderDbTable(){
     return;
   }
   const editable = canEditActiveList();
+  const canDelete = editable && canDeleteProperties();
   body.innerHTML = rows.map(p => `
     <tr data-i="${p._i}">
       <td class="code"><input type="text" value="${escapeAttr(p.code)}" data-f="code" ${editable?'':'disabled'}></td>
       <td><input type="text" value="${escapeAttr(p.address)}" data-f="address" ${editable?'':'disabled'}></td>
-      <td>${editable ? '<button class="btn small danger ghost" data-act="del" style="padding:4px 8px;">✕</button>' : ''}</td>
+      <td>${canDelete ? '<button class="btn small danger ghost" data-act="del" style="padding:4px 8px;">✕</button>' : ''}</td>
     </tr>`).join('');
   if(!editable) return;
   body.querySelectorAll('input').forEach(inp=>{
@@ -3269,6 +3662,7 @@ function renderDbTable(){
   });
   body.querySelectorAll('[data-act="del"]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
+      if(!canDeleteProperties()){ toast('Only ' + GLOBAL_ADMIN_USERNAME + ' (or an Admin they\'ve granted this to) can delete properties.', 'err'); return; }
       const tr = btn.closest('tr');
       const i = +tr.dataset.i;
       State.properties.splice(i,1);
@@ -3327,6 +3721,7 @@ function bindDbTab(){
   });
   document.getElementById('clearDbBtn').addEventListener('click', async ()=>{
     if(!canEditActiveList()){ toast('Select a specific list (not "All lists") to make changes', 'err'); return; }
+    if(!canDeleteProperties()){ toast('Only ' + GLOBAL_ADMIN_USERNAME + ' (or an Admin they\'ve granted this to) can delete properties.', 'err'); return; }
     if(!confirm(`Remove all properties from "${activeListId}"? This affects everyone assigned to that list.`)) return;
     State.properties = [];
     await savePropertiesForList(activeListId, State.properties);
@@ -3363,6 +3758,7 @@ function bindDbTab(){
     if(!State.uploadParsed || !canEditActiveList()) return;
     const mode = document.querySelector('input[name=uploadMode]:checked').value;
     if(mode === 'replace'){
+      if(!canDeleteProperties()){ toast('Only ' + GLOBAL_ADMIN_USERNAME + ' (or an Admin they\'ve granted this to) can replace the whole list.', 'err'); return; }
       State.properties = State.uploadParsed;
     } else {
       const map = new Map(State.properties.map(p=>[p.code, p]));
@@ -3445,6 +3841,10 @@ function renderLog(){
       </div>
       <div class="addr">${escapeHtml(e.address)}</div>
       <div class="meta">${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} · ${e.count} photo${e.count>1?'s':''} · ${escapeHtml(e.userEmail || 'unknown')} · ${escapeHtml(e.listId || '—')}</div>
+      ${(e.files && e.files.length) ? `<div class="log-files">
+        ${e.files.slice(0, 6).map(f => `<span class="file-chip" title="${escapeAttr(f)}">${escapeHtml(truncateFilename(f, 20))}</span>`).join('')}
+        ${e.files.length > 6 ? `<span class="more-chip">+${e.files.length - 6} more</span>` : ''}
+      </div>` : ''}
     </div>`).join('');
 }
 function bindLogTab(){
@@ -3476,6 +3876,20 @@ function bindLogTab(){
 function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escapeAttr(s){ return escapeHtml(s); }
 
+// Shortens a long filename for display (Activity Log file chips), keeping
+// the extension visible and cutting from the middle of the name — the
+// full filename is always available via the chip's title/hover tooltip.
+function truncateFilename(name, maxLen){
+  if(!name) return '';
+  if(name.length <= maxLen) return name;
+  const dot = name.lastIndexOf('.');
+  const hasExt = dot > 0 && name.length - dot <= 6;
+  const ext = hasExt ? name.slice(dot) : '';
+  const base = hasExt ? name.slice(0, dot) : name;
+  const keep = Math.max(3, maxLen - ext.length - 1);
+  return base.slice(0, keep) + '…' + ext;
+}
+
 /* ============================= BIND ALL ============================= */
 function bindEvents(){
   bindTabs();
@@ -3489,6 +3903,7 @@ function bindEvents(){
   bindAuditTab();
   bindEmailTemplateTab();
   bindCompressionToggle();
+  bindSetupWizard();
   bindSupportTab();
 
   document.getElementById('woNumber').addEventListener('input', updateProcessBtn);
