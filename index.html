@@ -1032,9 +1032,15 @@
             that can't be located at all. Anything already located is reused from the saved cache at no cost;
             only new/uncached addresses trigger a fresh lookup, at roughly one per second (OpenStreetMap's
             usage limit) — so a first run on a large, mostly-uncached list can take a while. You can stop
-            anytime; progress already made is saved and won't need re-checking next time.
+            anytime — progress already made is saved. Every located address (whether reused from cache or
+            freshly found this run) is saved back to the shared location cache, so the more you run this,
+            the less there is left to look up next time, for everyone using this list — not just this device.
           </div>
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+            <select id="locationAuditScope" class="mono-input" style="width:auto;">
+              <option value="all">Check all properties</option>
+              <option value="flagged" disabled>Only previously flagged</option>
+            </select>
             <button class="btn small primary" id="locationAuditRunBtn">Run audit</button>
             <button class="btn small ghost danger" id="locationAuditCancelBtn" style="display:none;">Stop</button>
             <span style="font-size:12.5px; color:var(--text-dim);" id="locationAuditStatus"></span>
@@ -2829,9 +2835,12 @@ function renderAcList(){
     if(canAdd){
       list.innerHTML += `<div class="ac-item" id="acAddPropertyBtn" style="color:var(--amber); font-weight:600;">+ Add "${escapeHtml(q)}" as a new property</div>`;
     }
+    list.innerHTML += `<div class="ac-item" id="acLookupOnlyBtn" style="color:var(--text-dim); font-style:italic;">Look up "${escapeHtml(q)}" without adding it to the list</div>`;
     list.classList.add('show');
     const addBtn = document.getElementById('acAddPropertyBtn');
     if(addBtn) addBtn.addEventListener('click', ()=> openAddPropertyBox(q));
+    const lookupOnlyBtn = document.getElementById('acLookupOnlyBtn');
+    if(lookupOnlyBtn) lookupOnlyBtn.addEventListener('click', ()=> lookupAddressOnly(q));
     return;
   }
   list.innerHTML = acResults.map((p,i)=>`
@@ -2886,6 +2895,7 @@ async function addNewPropertyFromLookup(){
   const btn = document.getElementById('lookupAddPropertyBtn');
 
   if(!code || !address){ status.textContent = 'Enter both a property ID and an address.'; return; }
+  if(isTestAddress(address)){ status.textContent = 'That looks like a test/placeholder address and won\'t be saved.'; return; }
   if(!targetList){ status.textContent = 'Choose a region to add it to.'; return; }
 
   btn.disabled = true;
@@ -2950,6 +2960,52 @@ async function addNewPropertyFromLookup(){
   updateProcessBtn();
 }
 
+/* ---- look up an address for this session's tagging only, without saving it anywhere ---- */
+async function lookupAddressOnly(address){
+  document.getElementById('acList').classList.remove('show');
+  clearResolvedProperty();
+
+  const geoStatus = document.getElementById('geoStatus');
+  document.getElementById('propResolved').style.display = 'block';
+  document.getElementById('addressQueryField').value = address;
+  document.getElementById('resultBox').classList.remove('show');
+  geoStatus.textContent = 'Looking up…';
+
+  const variants = buildAddressVariants(address);
+  let found = null, usedVariant = null;
+  for(let i=0; i<variants.length; i++){
+    try{
+      const result = await nominatimLookup(variants[i]);
+      if(result){ found = result; usedVariant = variants[i]; break; }
+    }catch(e){ /* try the next variant */ }
+    if(i < variants.length-1) await new Promise(r=>setTimeout(r, 250));
+  }
+
+  // No property ID exists for an ad-hoc lookup, so the address itself
+  // stands in for it — it's only ever used locally, to label the
+  // job/export folder for this session. Nothing gets written to the
+  // property list or the shared location cache.
+  const adhocCode = address.length > 60 ? address.slice(0, 60).trim() : address;
+  State.currentProperty = { code: adhocCode, address, adhoc: true };
+  document.getElementById('propSearch').value = adhocCode;
+
+  if(found){
+    const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
+    fillCoords(lat.toFixed(6), lon.toFixed(6));
+    geoStatus.textContent = (usedVariant === address)
+      ? 'Located via OpenStreetMap — not added to the property list'
+      : `Located via OpenStreetMap, auto-adjusted to "${usedVariant}" — not added to the property list`;
+    toast('Found its location — not saved to the property list', 'ok');
+  } else {
+    document.getElementById('latField').value = '';
+    document.getElementById('lonField').value = '';
+    updateStamp('lookup failed — enter manually below');
+    geoStatus.textContent = `Couldn't find coordinates for "${address}" — edit the address above and try again, or enter coordinates manually. Not added to the property list.`;
+    toast("Couldn't find that address — enter coordinates manually", 'err');
+  }
+  updateProcessBtn();
+}
+
 /* ============================= LOCATION AUDIT (Admin only) =============================
    Checks the active property list for anything worth a human looking at:
    duplicate IDs, missing addresses, saved/found coordinates that fall
@@ -2967,10 +3023,29 @@ function looksOutsideNZ(lat, lon){
 }
 let locationAuditRunning = false;
 let locationAuditCancelFlag = false;
+let locationAuditLastFlaggedCodes = null; // Set of codes flagged by the most recent run on this list
+let locationAuditLastListId = null;        // which list that was, so switching regions resets it
 
 function renderLocationAuditPanel(){
   document.getElementById('locationAuditListName').textContent =
     activeListId ? (activeListId === 'ALL' ? 'Both regions (merged)' : regionLabel(activeListId)) : '—';
+  if(activeListId !== locationAuditLastListId){
+    locationAuditLastFlaggedCodes = null;
+    locationAuditLastListId = activeListId;
+  }
+  updateLocationAuditScopeOptions();
+}
+function updateLocationAuditScopeOptions(){
+  const scopeSelect = document.getElementById('locationAuditScope');
+  const flaggedOpt = scopeSelect.querySelector('option[value="flagged"]');
+  if(locationAuditLastFlaggedCodes && locationAuditLastFlaggedCodes.size){
+    flaggedOpt.disabled = false;
+    flaggedOpt.textContent = `Only previously flagged (${locationAuditLastFlaggedCodes.size})`;
+  } else {
+    flaggedOpt.disabled = true;
+    flaggedOpt.textContent = 'Only previously flagged';
+    if(scopeSelect.value === 'flagged') scopeSelect.value = 'all';
+  }
 }
 function bindLocationAudit(){
   document.getElementById('locationAuditRunBtn').addEventListener('click', runLocationAudit);
@@ -2981,6 +3056,7 @@ async function runLocationAudit(){
   locationAuditRunning = true;
   locationAuditCancelFlag = false;
 
+  const scope = document.getElementById('locationAuditScope').value;
   const runBtn = document.getElementById('locationAuditRunBtn');
   const cancelBtn = document.getElementById('locationAuditCancelBtn');
   const statusEl = document.getElementById('locationAuditStatus');
@@ -2990,16 +3066,24 @@ async function runLocationAudit(){
   const emptyEl = document.getElementById('locationAuditEmpty');
 
   runBtn.disabled = true;
+  document.getElementById('locationAuditScope').disabled = true;
   cancelBtn.style.display = '';
   progressWrap.classList.add('show');
   resultsBody.innerHTML = '';
   emptyEl.style.display = 'none';
-  let flaggedCount = 0;
+  let flaggedCount = 0, newlyLocatedCount = 0, reusedFromCacheCount = 0;
+  const newlyFlaggedCodes = new Set();
 
-  const rows = await loadPropertiesForList(activeListId);
-  const total = rows.length;
+  // Duplicate-ID detection always needs the full list for context, even
+  // when only re-checking a previously-flagged subset.
+  const allRows = await loadPropertiesForList(activeListId);
   const codeCounts = {};
-  rows.forEach(p => { const c = (p.code||'').trim().toLowerCase(); if(c) codeCounts[c] = (codeCounts[c]||0) + 1; });
+  allRows.forEach(p => { const c = (p.code||'').trim().toLowerCase(); if(c) codeCounts[c] = (codeCounts[c]||0) + 1; });
+
+  const rows = (scope === 'flagged' && locationAuditLastFlaggedCodes)
+    ? allRows.filter(p => locationAuditLastFlaggedCodes.has((p.code||'').trim().toLowerCase()))
+    : allRows;
+  const total = rows.length;
 
   let checked = 0, stopped = false;
   for(const p of rows){
@@ -3017,6 +3101,7 @@ async function runLocationAudit(){
       let entry = State.geoCache[p.code] || await fetchGeocodeFromCloud(p.code);
       if(entry && entry.lat != null){
         State.geoCache[p.code] = entry;
+        reusedFromCacheCount++;
         if(looksOutsideNZ(entry.lat, entry.lon)) reasons.push('Saved location looks outside New Zealand — verify manually');
       } else {
         const variants = buildAddressVariants(p.address);
@@ -3035,7 +3120,8 @@ async function runLocationAudit(){
           const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
           const data = { lat, lon, source:'nominatim', query: usedVariant };
           State.geoCache[p.code] = data;
-          await saveGeocodeToCloud(p.code, data);
+          await saveGeocodeToCloud(p.code, data); // saved for next time — reused above without a lookup
+          newlyLocatedCount++;
           if(looksOutsideNZ(lat, lon)) reasons.push('Location looks outside New Zealand — verify manually');
         } else {
           reasons.push('No match found for this address');
@@ -3045,18 +3131,32 @@ async function runLocationAudit(){
 
     if(reasons.length){
       flaggedCount++;
+      newlyFlaggedCodes.add(codeKey);
       resultsBody.insertAdjacentHTML('beforeend', `<tr><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td></tr>`);
     }
   }
 
   locationAuditRunning = false;
   runBtn.disabled = false;
+  document.getElementById('locationAuditScope').disabled = false;
   cancelBtn.style.display = 'none';
   emptyEl.style.display = flaggedCount ? 'none' : '';
   if(!flaggedCount && !stopped) emptyEl.textContent = `Checked all ${total} properties — nothing flagged.`;
+
+  // Only replace the "previously flagged" set with a full-list run's
+  // results — a partial ("flagged only") re-run shouldn't shrink it based
+  // on properties it never looked at.
+  if(scope === 'all' && !stopped){
+    locationAuditLastFlaggedCodes = newlyFlaggedCodes;
+    locationAuditLastListId = activeListId;
+  } else if(scope === 'flagged' && !stopped){
+    locationAuditLastFlaggedCodes = newlyFlaggedCodes; // whatever's still flagged after re-checking
+  }
+  updateLocationAuditScopeOptions();
+
   statusEl.textContent = stopped
     ? `Stopped — checked ${checked} of ${total}, ${flaggedCount} flagged. Run again anytime to pick up where this left off.`
-    : `Done — checked ${total}, ${flaggedCount} flagged.`;
+    : `Done — checked ${total} (${reusedFromCacheCount} already saved, ${newlyLocatedCount} newly located and saved for next time), ${flaggedCount} flagged.`;
 }
 
 
@@ -3174,14 +3274,54 @@ function dedupeSegments(addr){
   return out.join(', ');
 }
 
+// Common NZ street-type abbreviations, expanded as an extra variant to
+// try when the raw form doesn't match — Nominatim/OSM data is often
+// abbreviated already and usually fine either way, but this catches the
+// occasional import where expanding (or the reverse) makes the difference.
+const STREET_TYPE_MAP = {
+  ST:'Street', RD:'Road', CRES:'Crescent', AVE:'Avenue', AV:'Avenue',
+  PL:'Place', DR:'Drive', TCE:'Terrace', GR:'Grove', GRN:'Green',
+  LN:'Lane', CL:'Close', BLVD:'Boulevard', PDE:'Parade', SQ:'Square',
+  HWY:'Highway', HTS:'Heights', GDNS:'Gardens', ESP:'Esplanade',
+  QUAY:'Quay', LOOP:'Loop', RTN:'Return', WAY:'Way'
+};
+// Expands the street-type abbreviation at the end of the first
+// (street-name) segment, e.g. "92 WAGHORNE ST, AHURIRI" -> "92 WAGHORNE
+// Street, AHURIRI". Returns null if the first segment doesn't end in a
+// recognised abbreviation.
+function expandStreetAbbrev(s){
+  const parts = s.split(',');
+  const words = parts[0].trim().split(/\s+/);
+  if(!words.length) return null;
+  const last = words[words.length-1].toUpperCase().replace(/\.$/,'');
+  if(!STREET_TYPE_MAP[last]) return null;
+  words[words.length-1] = STREET_TYPE_MAP[last];
+  parts[0] = words.join(' ');
+  return parts.join(',');
+}
 function buildAddressVariants(raw){
   const variants = [];
-  const add = (s)=>{ s = (s||'').trim().replace(/\s{2,}/g,' '); if(s && !variants.includes(s)) variants.push(s); };
+  const add = (s)=>{
+    s = (s||'').trim().replace(/\s{2,}/g,' ');
+    if(!s || variants.includes(s)) return;
+    variants.push(s);
+    const expanded = expandStreetAbbrev(s);
+    if(expanded) add(expanded);
+  };
 
   const deduped = dedupeSegments(raw);
   add(deduped);
 
-  // "1-2/209 MAIN NORTH RD ..." -> try "209 MAIN NORTH RD ..." and "1/209 MAIN NORTH RD ..."
+  // "OLD-92 WAGHORNE ST ..." / "...FLAT 1 OLD-92 WAGHORNE ST ..." — a
+  // legacy renumbering prefix that trips up the geocoder outright. Try
+  // the address with every "OLD-" (or "OLD ") stripped from in front of
+  // a house number, anywhere in the string.
+  if(/\bOLD[\s-]?\d/i.test(deduped)){
+    add(deduped.replace(/\bOLD[\s-]+(?=\d)/gi, ''));
+  }
+
+  // "1-2/209 MAIN NORTH RD ..." -> try "209 MAIN NORTH RD ..." and
+  // "1/209 MAIN NORTH RD ..."
   let m = deduped.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
   if(m){
     add(m[3]);
@@ -3191,9 +3331,23 @@ function buildAddressVariants(raw){
     m = deduped.match(/^(\d+)\s*\/\s*(.+)$/);
     if(m) add(m[2]);
   }
+  // Same unit/number stripping, but applied after the "OLD-" prefix has
+  // already been removed — e.g. "OLD-8/6 BRIGHT CRES" -> "8/6 BRIGHT
+  // CRES" -> "6 BRIGHT CRES".
+  const oldStripped = deduped.replace(/\bOLD[\s-]+(?=\d)/gi, '');
+  if(oldStripped !== deduped){
+    m = oldStripped.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
+    if(m){ add(m[3]); add(`${m[1]}/${m[3]}`); }
+    else { m = oldStripped.match(/^(\d+)\s*\/\s*(.+)$/); if(m) add(m[2]); }
+  }
 
-  // "FLAT 1 - 3, 15 FRANKLYN ST ..." / "UNIT 4, ..." -> drop the leading unit clause
+  // "FLAT 1 - 3, 15 FRANKLYN ST ..." / "UNIT 4, ..." -> drop the leading
+  // unit clause (comma-separated form).
   m = deduped.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+(?:\s*-\s*[0-9A-Za-z]+)?\s*,\s*(.+)$/i);
+  if(m) add(m[1]);
+  // "FLAT 3 75 RIVERBEND RD ..." — same idea but no comma after the unit
+  // number, so the house number runs straight into the street name.
+  m = deduped.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+\s+(\d+\s+.+)$/i);
   if(m) add(m[1]);
 
   // last-resort: explicit country hint on the best variant so far
@@ -4064,10 +4218,12 @@ function bindDbTab(){
     e.target.value = '';
     if(!file) return;
     try{
-      const rows = await parsePropertyFile(file);
+      const { rows, skipped } = await parsePropertyFile(file);
       if(!rows.length){ toast('No usable rows found in that file', 'err'); return; }
       State.uploadParsed = rows;
-      document.getElementById('uploadPreview').textContent = `${rows.length} rows parsed for list "${activeListId}". Example: ${rows[0].code} — ${rows[0].address}`;
+      State.uploadSkippedTestRows = skipped;
+      const skippedNote = skipped ? ` (${skipped} test/placeholder row${skipped===1?'':'s'} skipped)` : '';
+      document.getElementById('uploadPreview').textContent = `${rows.length} rows parsed for list "${activeListId}"${skippedNote}. Example: ${rows[0].code} — ${rows[0].address}`;
       document.getElementById('uploadModeBox').style.display = 'block';
     }catch(err){
       toast('Could not parse that file: ' + err.message, 'err');
@@ -4089,10 +4245,12 @@ function bindDbTab(){
       State.properties = [...map.values()];
     }
     await savePropertiesForList(activeListId, State.properties);
+    const skipped = State.uploadSkippedTestRows || 0;
     State.uploadParsed = null;
+    State.uploadSkippedTestRows = 0;
     document.getElementById('uploadModeBox').style.display = 'none';
     renderDbCount(); renderDbTable(); renderListSelector();
-    toast(`Property list "${activeListId}" updated`, 'ok');
+    toast(`Property list "${activeListId}" updated${skipped ? ` (${skipped} test row${skipped===1?'':'s'} skipped)` : ''}`, 'ok');
   });
 }
 
@@ -4120,15 +4278,23 @@ function parsePropertyFile(file){
     }
   });
 }
-
+// Any address containing "test" (case-insensitive) — covers "Test",
+// "testing", "TESTING JOB 1", etc. — is treated as placeholder/junk data
+// and never makes it into a saved property list, whether from a bulk
+// upload or the one-off "add new property" flow.
+function isTestAddress(address){
+  return /test/i.test(address || '');
+}
 function mapRowsToProperties(rows){
-  if(!rows.length) return [];
+  if(!rows.length) return { rows: [], skipped: 0 };
   const keys = Object.keys(rows[0]);
   const codeKey = keys.find(k => /code|id/i.test(k) && !/address/i.test(k)) || keys[0];
   const addrKey = keys.find(k => /address/i.test(k)) || keys[1] || keys[0];
-  return rows
+  const mapped = rows
     .map(r => ({ code: (r[codeKey]||'').toString().trim(), address: (r[addrKey]||'').toString().trim() }))
     .filter(p => p.code);
+  const kept = mapped.filter(p => !isTestAddress(p.address));
+  return { rows: kept, skipped: mapped.length - kept.length };
 }
 
 function downloadText(text, filename, mime){
