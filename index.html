@@ -535,6 +535,32 @@
         <div class="ac-list" id="acList"></div>
       </div>
 
+      <div id="addPropertyBox" style="display:none; margin-top:14px; padding:14px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px;">
+        <div style="font-weight:600; font-size:13px; margin-bottom:2px;">Add a new property</div>
+        <div class="panel-sub" style="margin-bottom:12px;">Not in the list yet — look up its location and add it. It'll be saved to the property list you choose below, and its location reused automatically next time.</div>
+        <div class="row">
+          <div>
+            <label class="field-label">Property ID</label>
+            <input type="text" id="newPropCode" class="mono-input" placeholder="e.g. R1234567">
+          </div>
+          <div>
+            <label class="field-label">Address</label>
+            <input type="text" id="newPropAddress" class="mono-input" placeholder="Full street address">
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;" id="newPropRegionRow">
+          <div>
+            <label class="field-label">Add to region</label>
+            <select id="newPropRegion" class="mono-input"></select>
+          </div>
+        </div>
+        <div class="login-error" id="addPropertyStatus" style="margin-top:8px;"></div>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button type="button" class="btn ghost" id="cancelAddPropertyBtn">Cancel</button>
+          <button type="button" class="btn primary" id="lookupAddPropertyBtn">Look up &amp; add</button>
+        </div>
+      </div>
+
       <div id="propResolved" style="display:none;">
         <div class="stamp" id="stampBox"></div>
         <div style="margin-top:14px;">
@@ -676,6 +702,7 @@
         <button class="settings-nav-btn" data-subtab="users" id="settingsNavUsers" style="display:none;">Users <span class="badge-count" id="usersCount">0</span></button>
         <button class="settings-nav-btn" data-subtab="activity" id="settingsNavActivity" style="display:none;">Activity Log <span class="badge-count" id="logCount">0</span></button>
         <button class="settings-nav-btn" data-subtab="audit" id="settingsNavAudit" style="display:none;">Audit Log</button>
+        <button class="settings-nav-btn" data-subtab="locationAudit" id="settingsNavLocationAudit" style="display:none;">Location Audit</button>
         <button class="settings-nav-btn" data-subtab="emailTemplate" id="settingsNavEmailTemplate" style="display:none;">Email Template</button>
       </div>
 
@@ -996,6 +1023,34 @@
           <div id="auditList"></div>
         </div>
 
+        <!-- ---- Location Audit (Admin only) ---- -->
+        <div class="settings-subpanel" id="subpanel-locationAudit">
+          <div class="panel-head"><span class="eyebrow">GEO</span><h2>Location audit</h2></div>
+          <div class="panel-sub">
+            Checks every property in the currently active list (<b id="locationAuditListName">—</b>) —
+            duplicate IDs, missing addresses, saved locations that land outside New Zealand, and any address
+            that can't be located at all. Anything already located is reused from the saved cache at no cost;
+            only new/uncached addresses trigger a fresh lookup, at roughly one per second (OpenStreetMap's
+            usage limit) — so a first run on a large, mostly-uncached list can take a while. You can stop
+            anytime; progress already made is saved and won't need re-checking next time.
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <button class="btn small primary" id="locationAuditRunBtn">Run audit</button>
+            <button class="btn small ghost danger" id="locationAuditCancelBtn" style="display:none;">Stop</button>
+            <span style="font-size:12.5px; color:var(--text-dim);" id="locationAuditStatus"></span>
+          </div>
+          <div class="progress-wrap" id="locationAuditProgressWrap">
+            <div class="progress-bar"><div class="progress-fill" id="locationAuditProgressFill" style="width:0%;"></div></div>
+          </div>
+          <div class="db-scroll">
+            <table class="db-table">
+              <thead><tr><th style="width:28%">Property ID</th><th style="width:42%">Address</th><th>Issue</th></tr></thead>
+              <tbody id="locationAuditResultsBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="locationAuditEmpty">Run the audit to check the active list.</div>
+        </div>
+
         <!-- ---- Email Template (Admin / Staff) ---- -->
         <div class="settings-subpanel" id="subpanel-emailTemplate">
           <div class="panel-head"><span class="eyebrow">MAIL</span><h2>Email template</h2></div>
@@ -1070,12 +1125,6 @@ const FIREBASE_CONFIG = {
 const USERNAME_EMAIL_DOMAIN = 'fieldgeotag.internal'; // fake domain used to key Firebase Auth off usernames instead of real emails
 const AUDIT_LOG_RETENTION_DAYS = 30;
 
-// The two fixed trade regions. Trade accounts belong to exactly one and
-// are walled off from the other's data — both in the UI and for real in
-// the Firestore security rules (a trade account's myListId() only ever
-// equals their own region's list ID). Admin/Staff can view either, or
-// both merged as "All". This app supports exactly these two regions; it
-// is not an open-ended "add new list" tool.
 const REGIONS = [
   { id: 'R07', label: 'Region 07', desc: "Hawke's Bay, Gisborne, Manawatu" },
   { id: 'R10', label: 'Region 10', desc: 'Christchurch, TOTS' }
@@ -1115,7 +1164,9 @@ const State = {
   properties: [],        // [{code, address}]
   geoCache: {},           // code -> {lat, lon, source}  (in-memory session cache, backed by Firestore)
   activityLog: [],        // [{ts, wo, propertyId, address, lat, lon, count, files, userEmail}]
+  activityLogLoaded: false, // true once fetched this session (lazy-loaded on first Activity Log tab view)
   auditLog: [],            // [{type:'login'|'geotag', ts, username, role, wo, propertyId, address, lat, lon, filename, fileType, listId}]
+  auditLogLoaded: false,    // true once fetched this session (lazy-loaded on first Audit Log tab view)
   images: [],              // [{id, file, name, size, type, url, selected}]
   currentProperty: null,   // {code, address}
   uploadParsed: null,      // pending parsed rows awaiting confirm
@@ -1233,22 +1284,8 @@ function isStaffRole(){ return myRole() === 'staff'; }
 function isStaffOrAdmin(){ return isAdmin() || isStaffRole(); }
 function roleLabel(role){ return role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Trade'; }
 
-// One account is the fixed "global admin" — the only account with
-// property-deletion rights by default. They can hand that specific
-// permission to other Admin accounts individually (Users tab → Add/Edit
-// → "Can delete properties" checkbox, which only they ever see). If this
-// account is ever renamed or removed, update this constant and redeploy
-// to hand the role to a different username.
 const GLOBAL_ADMIN_USERNAME = 'kishanp';
 function isGlobalAdmin(){ return !!userProfile && userProfile.usernameLower === GLOBAL_ADMIN_USERNAME; }
-// NOTE: this is a client-side (UI-level) permission only — Firestore
-// stores each region's whole property list as one array-shaped document,
-// so a security rule can't distinguish "removed a row" from "edited a
-// row's text" the way it can for something like account roles. The real
-// security boundary here is still "Admin or Staff", same as before; this
-// just hides the destructive actions from everyone but the accounts
-// explicitly granted them, as an internal-tool safeguard rather than a
-// hard server-side lock.
 function canDeleteProperties(){ return isGlobalAdmin() || (isAdmin() && userProfile && userProfile.canDeleteProperties === true); }
 
 // Small inline eye / eye-off icons for masked password reveal toggles
@@ -1286,6 +1323,7 @@ function updateRoleUI(){
   document.getElementById('settingsNavUsers').style.display = show ? '' : 'none';
   document.getElementById('settingsNavActivity').style.display = show ? '' : 'none';
   document.getElementById('settingsNavAudit').style.display = show ? '' : 'none';
+  document.getElementById('settingsNavLocationAudit').style.display = isAdmin() ? '' : 'none';
   document.getElementById('settingsNavEmailTemplate').style.display = show ? '' : 'none';
   document.getElementById('settingsNavAdminDivider').style.display = show ? '' : 'none';
   // Photo Compression is available to every role now — it's a per-device
@@ -1355,6 +1393,9 @@ function bindSettingsNav(){
       btn.classList.add('active');
       const panel = document.getElementById('subpanel-' + btn.dataset.subtab);
       if(panel) panel.classList.add('active');
+      if(btn.dataset.subtab === 'activity') ensureActivityLogLoaded();
+      if(btn.dataset.subtab === 'audit') ensureAuditLogLoaded();
+      if(btn.dataset.subtab === 'locationAudit') renderLocationAuditPanel();
     });
   });
 }
@@ -1483,13 +1524,6 @@ async function loadPropertiesForList(listId){
   if(!listId) return [];
   try{
     if(listId === 'ALL'){
-      // Merge each region's list directly, one scoped single-document read
-      // at a time — never a collection-level query here. The Firestore rule
-      // is scoped per-list (inMyRegion), and a blanket "list everything in
-      // property_lists" query needs every possible result to pass or the
-      // whole query is denied — which broke this for exactly the accounts
-      // ("All Regions" Trade/Staff) it needs to work for, even though they
-      // do have access to each of their own regions individually.
       const listsToLoad = (!isAdmin() && userProfile) ? myRegions() : ALL_REGION_IDS.slice();
       const all = await Promise.all(listsToLoad.map(id => loadPropertiesForList(id)));
       return all.flat();
@@ -1582,9 +1616,7 @@ async function clearActivityLogCloud(){
 async function loadAllData(){
   toast('Loading shared data…');
   if(isStaffOrAdmin()) await ensureRegionListsExist();
-  const [properties, log] = await Promise.all([ loadPropertiesForList(activeListId), loadActivityLog() ]);
-  State.properties = properties;
-  State.activityLog = log;
+  State.properties = await loadPropertiesForList(activeListId);
   State.geoCache = {};
   renderDbCount();
   renderDbTable();
@@ -1594,10 +1626,27 @@ async function loadAllData(){
   renderAutoSaveUI();
   if(isStaffOrAdmin()){
     await renderUsersTab();
-    State.auditLog = await loadAuditLog();
-    renderAuditLog();
     await renderEmailTemplateSubpanel();
   }
+}
+// Activity Log and Audit Log are no longer fetched on every login — each
+// one can be a few hundred/thousand document reads, and most sessions
+// never open either tab. They're fetched once, the first time their
+// Settings sub-tab is actually opened, and cached in State for the rest
+// of the session (a state-mutating action like tagging photos or
+// resetting a password still updates the in-memory copy directly/refetches
+// as before, so those stay accurate without needing another full reload).
+async function ensureActivityLogLoaded(){
+  if(State.activityLogLoaded) return;
+  State.activityLog = await loadActivityLog();
+  State.activityLogLoaded = true;
+  renderLog();
+}
+async function ensureAuditLogLoaded(){
+  if(State.auditLogLoaded) return;
+  State.auditLog = await loadAuditLog();
+  State.auditLogLoaded = true;
+  renderAuditLog();
 }
 
 /* ============================= USER MANAGEMENT (Admin / Staff) =============================
@@ -1726,21 +1775,6 @@ async function adminCreateUser({ username, password, role, regionsPick, companyN
   return { uid, username: uname };
 }
 
-// Edits an existing account's profile details — name, company/contact
-// info, and region assignment. Deliberately does NOT touch username,
-// password, or role: username is tied to the Firebase Auth record,
-// password has its own Reset flow, and role changes ripple into so many
-// other fields (company, regions, required-name rules) that it's safer
-// to remove and re-create the account for that. Firestore rules mirror
-// the same boundary this checks client-side: Admin can edit anyone,
-// Staff can only edit Trade accounts within their own region(s).
-// Edits an existing account's details. Username and password are
-// deliberately not editable here (username is the Auth sign-in key, and
-// password changes go through the dedicated reset flow instead — see
-// resetUserPassword). Role CAN be changed here, Admin only — switching
-// role reshapes which other fields apply (Trade needs a company, Admin
-// implicitly covers both regions, etc.), same rules as creating a new
-// account with that role.
 async function adminUpdateUser(target, { newRole, firstName, lastName, companyName, mobile, email, isCompanyAdmin, regionsPick, canDeleteProperties: canDeletePropertiesFlag }){
   const role = newRole || target.role;
   if(!isAdmin() && role !== 'trade'){
@@ -1805,11 +1839,6 @@ async function adminUpdateUser(target, { newRole, firstName, lastName, companyNa
     update.regions = firebase.firestore.FieldValue.delete();
   }
 
-  // Only ever set this when the checkbox was actually shown for this
-  // edit (global admin, editing another Admin account) — canDeletePropertiesFlag
-  // is null otherwise, and we leave the existing value on the account
-  // untouched rather than silently clearing it just because, say, Staff
-  // saved an unrelated edit on their own record.
   if(role === 'admin' && isGlobalAdmin() && canDeletePropertiesFlag !== null){
     update.canDeleteProperties = !!canDeletePropertiesFlag;
   } else if(role !== 'admin' && target.canDeleteProperties){
@@ -1832,31 +1861,6 @@ async function adminUpdateUser(target, { newRole, firstName, lastName, companyNa
   });
 }
 
-// Resets an existing account's password entirely on this page, without
-// needing the optional Cloud Function deployed. Changing another user's
-// Firebase Auth password normally requires Admin SDK privileges — but
-// since this app already stores each account's current plaintext
-// password by deliberate design (see the note on adminCreateUser above),
-// we can instead briefly sign into the isolated secondary Firebase App
-// AS the target account (using their currently-known password), call
-// updatePassword() on that session, then sign the secondary app back
-// out. This never touches the admin's own active session. Only falls
-// back to the Cloud Function if the account's current password isn't on
-// file at all (e.g. an account created before password storage existed —
-// see SETUP.md for deploying that as a backstop).
-// Resets an existing account's password entirely on this page and on the
-// free (Spark) Firebase plan — no Cloud Function needed. Changing another
-// user's Firebase Auth password normally requires backend privileges —
-// but since this app already stores each account's current plaintext
-// password by deliberate design (see the note on adminCreateUser above),
-// we can instead briefly sign into the isolated secondary Firebase App
-// AS the target account (using their currently-known password), call
-// updatePassword() on that session, then sign the secondary app back
-// out. This never touches the admin's own active session.
-// Only reachable when the account has a known current password — the
-// Users tab hides this path entirely (showing "Remove & recreate"
-// instead) for the one case it can't cover: an account with no password
-// on file at all, from before password storage existed.
 async function resetUserPassword(uid, newPassword){
   const target = usersListCache.find(x => x.uid === uid);
   if(!target) throw new Error('Could not find that account — refresh and try again.');
@@ -1892,18 +1896,6 @@ async function resetUserPassword(uid, newPassword){
   });
 }
 
-// Core removal: deletes the Firestore users/{uid} doc (this is what
-// actually revokes app access), the username reservation, and — when the
-// account's current password is known — the underlying Firebase Auth
-// sign-in record too, using the same self-serve trick as password resets:
-// briefly sign into the isolated secondary Firebase App AS that account
-// (since we already know its current password) and call the Auth SDK's
-// own delete() on that session. Works on the free plan, no Cloud Function
-// needed. When the password isn't known (a legacy account from before
-// password storage existed), the Auth record can't be signed into and so
-// survives as a harmless orphan — see the "remove & recreate" flow's
-// legacy-box copy for the manual Firebase-console cleanup step for that
-// case.
 async function removeUserCore(uid, usernameLower, username, role, password){
   await db.collection('users').doc(uid).delete();
   if(usernameLower) await db.collection('usernames').doc(usernameLower).delete();
@@ -1943,6 +1935,7 @@ async function removeUser(uid, usernameLower, username, role){
     selectedUserUids.delete(uid);
     await renderUsersTab();
     State.auditLog = await loadAuditLog();
+    State.auditLogLoaded = true;
     renderAuditLog();
   }catch(e){
     toast('Could not remove that account: ' + e.message, 'err');
@@ -1968,6 +1961,7 @@ async function removeUsers(users){
   toast(`Removed ${okCount} of ${users.length} account${users.length>1?'s':''}`, 'ok');
   await renderUsersTab();
   State.auditLog = await loadAuditLog();
+  State.auditLogLoaded = true;
   renderAuditLog();
 }
 
@@ -2028,12 +2022,6 @@ async function openEmailTemplate(user, password){
   };
 }
 
-// Multi-account version — used by the Users tab's bulk "Email details"
-// action. Builds one combined email with each selected account's login
-// details as its own block (same per-account template, just repeated),
-// and pre-fills "To" with whichever selected accounts have an email
-// address on file (Trade accounts only — Admin/Staff don't collect one,
-// same as the single-account version, which leaves "To" blank for them).
 async function openEmailTemplateMulti(users){
   const tpl = await loadEmailTemplate();
   const blocks = users.map(u => fillTemplate(tpl.body, {
@@ -2097,13 +2085,6 @@ async function loadUsersList(){
     let snap;
     if(isAdmin()) snap = await db.collection('users').orderBy('username').get();
     else {
-      // Staff sees other Staff accounts (any region) plus Trade accounts
-      // within their own region(s). The Trade query MUST filter by region
-      // in the query itself (array-contains-any), not just client-side —
-      // Firestore rejects the entire query outright if the security rule
-      // can't be statically verified for every document the query's own
-      // where-clauses could match, and "regions overlap" isn't otherwise
-      // guaranteed just from role=='trade' alone.
       const own = myRegions();
       const [staffSnap, tradeSnap] = await Promise.all([
         db.collection('users').where('role', '==', 'staff').get(),
@@ -2256,13 +2237,6 @@ function renderUsersTable(){
   updateBulkToolbar();
 }
 
-// The bulk-action toolbar is always visible above the Users table. Its
-// buttons are grayed out (disabled) whenever nothing is selected, and
-// re-enable according to what's valid for the current selection: Edit and
-// Reset password only make sense for exactly one account at a time; Email
-// details and Remove work across any number. "Clear selection" is the only
-// control that appears/disappears, since it's meaningless with nothing
-// selected.
 function updateBulkToolbar(){
   const selectAllCb = document.getElementById('usersSelectAllCb');
   const uids = Array.from(selectedUserUids);
@@ -2404,11 +2378,6 @@ function openResetPassword(u){
   document.getElementById('resetPasswordUsernameLabel').textContent = u.username || '';
   document.getElementById('resetPasswordValue').value = generateRandomPassword();
 
-  // Accounts created before password storage existed have no current
-  // password on file, so the client-side self-serve reset (see
-  // resetUserPassword) has nothing to sign in with — offer the
-  // remove-and-recreate shortcut instead of a reset button that can only
-  // fail. See resetPasswordLegacyBox's copy for the full explanation.
   const hasKnownPassword = !!u.password;
   document.getElementById('resetPasswordNormalBox').style.display = hasKnownPassword ? '' : 'none';
   document.getElementById('resetPasswordLegacyBox').style.display = hasKnownPassword ? 'none' : '';
@@ -2715,6 +2684,11 @@ function renderAuditLog(){
   document.getElementById('auditCount2').textContent = State.auditLog.length;
   const list = document.getElementById('auditList');
   const rangeEl = document.getElementById('auditRange');
+  if(!State.auditLogLoaded){
+    list.innerHTML = '<div class="empty-state">Loading…</div>';
+    rangeEl.textContent = '';
+    return;
+  }
   if(!State.auditLog.length){
     list.innerHTML = '<div class="empty-state">No audit entries yet — logins, geotagging actions, and account removals will appear here, kept for 30 days.</div>';
     rangeEl.textContent = '';
@@ -2736,6 +2710,7 @@ function auditRowsForExport(){
 function bindAuditTab(){
   document.getElementById('refreshAuditBtn').addEventListener('click', async ()=>{
     State.auditLog = await loadAuditLog();
+    State.auditLogLoaded = true;
     renderAuditLog();
     toast('Audit log refreshed', 'ok');
   });
@@ -2837,11 +2812,19 @@ function bindPropertySearch(){
 }
 function renderAcList(){
   const list = document.getElementById('acList');
+  const q = document.getElementById('propSearch').value.trim();
   if(!acResults.length){
+    if(!q){ list.classList.remove('show'); return; }
+    const canAdd = isStaffOrAdmin();
     list.innerHTML = State.properties.length
-      ? '<div class="ac-empty">No matches. Check the Property DB tab.</div>'
-      : '<div class="ac-empty">No property list loaded yet — go to the Property DB tab to upload one.</div>';
+      ? `<div class="ac-empty">No matches for "${escapeHtml(q)}".${canAdd ? '' : ' Check the Property DB tab.'}</div>`
+      : `<div class="ac-empty">No property list loaded yet${canAdd ? '' : ' — go to the Property DB tab to upload one.'}</div>`;
+    if(canAdd){
+      list.innerHTML += `<div class="ac-item" id="acAddPropertyBtn" style="color:var(--amber); font-weight:600;">+ Add "${escapeHtml(q)}" as a new property</div>`;
+    }
     list.classList.add('show');
+    const addBtn = document.getElementById('acAddPropertyBtn');
+    if(addBtn) addBtn.addEventListener('click', ()=> openAddPropertyBox(q));
     return;
   }
   list.innerHTML = acResults.map((p,i)=>`
@@ -2854,6 +2837,221 @@ function renderAcList(){
     el.addEventListener('click', ()=> selectProperty(acResults[+el.dataset.i]));
   });
 }
+
+/* ---- add a brand-new property straight from the lookup box ---- */
+function openAddPropertyBox(query){
+  document.getElementById('acList').classList.remove('show');
+  clearResolvedProperty();
+  const codeField = document.getElementById('newPropCode');
+  const addrField = document.getElementById('newPropAddress');
+  codeField.value = query;
+  addrField.value = query;
+  document.getElementById('addPropertyStatus').textContent = '';
+
+  const regionSelect = document.getElementById('newPropRegion');
+  const regions = myRegions();
+  regionSelect.innerHTML = REGIONS.filter(r => regions.includes(r.id))
+    .map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(regionLabel(r.id))}</option>`).join('');
+  // Default to whichever specific region is currently active, if any —
+  // otherwise (viewing "All regions" merged) leave it on the first option
+  // and let the user pick, since there's no single obvious target.
+  if(regions.includes(activeListId)) regionSelect.value = activeListId;
+  document.getElementById('newPropRegionRow').style.display = regions.length > 1 ? '' : 'none';
+
+  document.getElementById('addPropertyBox').style.display = 'block';
+  codeField.focus();
+}
+function closeAddPropertyBox(){
+  document.getElementById('addPropertyBox').style.display = 'none';
+  document.getElementById('newPropCode').value = '';
+  document.getElementById('newPropAddress').value = '';
+  document.getElementById('addPropertyStatus').textContent = '';
+}
+function bindAddPropertyBox(){
+  document.getElementById('cancelAddPropertyBtn').addEventListener('click', closeAddPropertyBox);
+  document.getElementById('lookupAddPropertyBtn').addEventListener('click', addNewPropertyFromLookup);
+}
+async function addNewPropertyFromLookup(){
+  const code = document.getElementById('newPropCode').value.trim();
+  const address = document.getElementById('newPropAddress').value.trim();
+  const targetList = document.getElementById('newPropRegion').value;
+  const status = document.getElementById('addPropertyStatus');
+  const btn = document.getElementById('lookupAddPropertyBtn');
+
+  if(!code || !address){ status.textContent = 'Enter both a property ID and an address.'; return; }
+  if(!targetList){ status.textContent = 'Choose a region to add it to.'; return; }
+
+  btn.disabled = true;
+  status.style.color = '';
+  status.textContent = 'Checking for duplicates…';
+
+  const targetRows = await loadPropertiesForList(targetList);
+  if(targetRows.some(p => (p.code||'').trim().toLowerCase() === code.toLowerCase())){
+    status.textContent = `Property ID "${code}" already exists in ${regionLabel(targetList)}.`;
+    btn.disabled = false;
+    return;
+  }
+
+  status.textContent = 'Looking up coordinates…';
+  const variants = buildAddressVariants(address);
+  let found = null, usedVariant = null;
+  for(let i=0; i<variants.length; i++){
+    try{
+      const result = await nominatimLookup(variants[i]);
+      if(result){ found = result; usedVariant = variants[i]; break; }
+    }catch(e){ /* try the next variant */ }
+    if(i < variants.length-1) await new Promise(r=>setTimeout(r, 250));
+  }
+
+  const newRow = { code, address };
+  targetRows.unshift(newRow);
+  await savePropertiesForList(targetList, targetRows);
+
+  // Keep the in-memory list (and the DB tab, if it's viewed later) in sync
+  // when the new row belongs to whatever's currently loaded.
+  if(targetList === activeListId || activeListId === 'ALL'){
+    State.properties.unshift(newRow);
+    renderDbCount(); renderDbTable();
+  }
+
+  btn.disabled = false;
+  closeAddPropertyBox();
+  document.getElementById('propSearch').value = code;
+
+  State.currentProperty = newRow;
+  document.getElementById('propResolved').style.display = 'block';
+  document.getElementById('addressQueryField').value = address;
+  document.getElementById('resultBox').classList.remove('show');
+
+  if(found){
+    const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
+    State.geoCache[code] = { lat, lon, source:'nominatim', query: usedVariant };
+    await saveGeocodeToCloud(code, State.geoCache[code]);
+    fillCoords(lat.toFixed(6), lon.toFixed(6));
+    document.getElementById('geoStatus').textContent = (usedVariant === address)
+      ? `Added to ${regionLabel(targetList)} and located via OpenStreetMap`
+      : `Added to ${regionLabel(targetList)} — located via OpenStreetMap, auto-adjusted to "${usedVariant}"`;
+    toast(`Added "${code}" and found its location`, 'ok');
+  } else {
+    document.getElementById('latField').value = '';
+    document.getElementById('lonField').value = '';
+    updateStamp('lookup failed — enter manually below');
+    document.getElementById('geoStatus').textContent =
+      `Added to ${regionLabel(targetList)}, but couldn't find coordinates for "${address}" — edit the address above and try again, or enter coordinates manually.`;
+    toast(`Added "${code}" — location needs to be entered manually`, 'err');
+  }
+  updateProcessBtn();
+}
+
+/* ============================= LOCATION AUDIT (Admin only) =============================
+   Checks the active property list for anything worth a human looking at:
+   duplicate IDs, missing addresses, saved/found coordinates that fall
+   outside New Zealand (a strong signal the geocoder matched the wrong
+   place), and addresses that can't be located at all. Already-cached
+   locations are reused for free; only uncached ones trigger a real
+   OpenStreetMap lookup, throttled to stay under Nominatim's ~1 req/sec
+   policy. It's a manual, admin-triggered action — never run automatically
+   — because a full run against a large, mostly-uncached list is a real
+   chunk of both time and Firestore read quota.
+*/
+const NZ_BOUNDS = { minLat: -47.5, maxLat: -34.0, minLon: 166.0, maxLon: 179.0 };
+function looksOutsideNZ(lat, lon){
+  return lat < NZ_BOUNDS.minLat || lat > NZ_BOUNDS.maxLat || lon < NZ_BOUNDS.minLon || lon > NZ_BOUNDS.maxLon;
+}
+let locationAuditRunning = false;
+let locationAuditCancelFlag = false;
+
+function renderLocationAuditPanel(){
+  document.getElementById('locationAuditListName').textContent =
+    activeListId ? (activeListId === 'ALL' ? 'Both regions (merged)' : regionLabel(activeListId)) : '—';
+}
+function bindLocationAudit(){
+  document.getElementById('locationAuditRunBtn').addEventListener('click', runLocationAudit);
+  document.getElementById('locationAuditCancelBtn').addEventListener('click', ()=>{ locationAuditCancelFlag = true; });
+}
+async function runLocationAudit(){
+  if(locationAuditRunning || !activeListId) return;
+  locationAuditRunning = true;
+  locationAuditCancelFlag = false;
+
+  const runBtn = document.getElementById('locationAuditRunBtn');
+  const cancelBtn = document.getElementById('locationAuditCancelBtn');
+  const statusEl = document.getElementById('locationAuditStatus');
+  const progressWrap = document.getElementById('locationAuditProgressWrap');
+  const progressFill = document.getElementById('locationAuditProgressFill');
+  const resultsBody = document.getElementById('locationAuditResultsBody');
+  const emptyEl = document.getElementById('locationAuditEmpty');
+
+  runBtn.disabled = true;
+  cancelBtn.style.display = '';
+  progressWrap.classList.add('show');
+  resultsBody.innerHTML = '';
+  emptyEl.style.display = 'none';
+  let flaggedCount = 0;
+
+  const rows = await loadPropertiesForList(activeListId);
+  const total = rows.length;
+  const codeCounts = {};
+  rows.forEach(p => { const c = (p.code||'').trim().toLowerCase(); if(c) codeCounts[c] = (codeCounts[c]||0) + 1; });
+
+  let checked = 0, stopped = false;
+  for(const p of rows){
+    if(locationAuditCancelFlag){ stopped = true; break; }
+    checked++;
+    progressFill.style.width = Math.round(checked/total*100) + '%';
+    statusEl.textContent = `Checking ${checked} of ${total}… (${flaggedCount} flagged so far)`;
+
+    const reasons = [];
+    const codeKey = (p.code||'').trim().toLowerCase();
+    if(codeCounts[codeKey] > 1) reasons.push('Duplicate property ID appears more than once in this list');
+    if(!p.address || !p.address.trim()) reasons.push('No address on file');
+
+    if(!reasons.includes('No address on file')){
+      let entry = State.geoCache[p.code] || await fetchGeocodeFromCloud(p.code);
+      if(entry && entry.lat != null){
+        State.geoCache[p.code] = entry;
+        if(looksOutsideNZ(entry.lat, entry.lon)) reasons.push('Saved location looks outside New Zealand — verify manually');
+      } else {
+        const variants = buildAddressVariants(p.address);
+        let found = null, usedVariant = null;
+        for(let i=0; i<variants.length; i++){
+          if(locationAuditCancelFlag) break;
+          try{
+            const result = await nominatimLookup(variants[i]);
+            if(result){ found = result; usedVariant = variants[i]; break; }
+          }catch(e){ /* try the next variant */ }
+          // Stay comfortably under OpenStreetMap's ~1 request/second policy.
+          await new Promise(r=>setTimeout(r, 1100));
+        }
+        if(locationAuditCancelFlag){ stopped = true; break; }
+        if(found){
+          const lat = parseFloat(found.lat), lon = parseFloat(found.lon);
+          const data = { lat, lon, source:'nominatim', query: usedVariant };
+          State.geoCache[p.code] = data;
+          await saveGeocodeToCloud(p.code, data);
+          if(looksOutsideNZ(lat, lon)) reasons.push('Location looks outside New Zealand — verify manually');
+        } else {
+          reasons.push('No match found for this address');
+        }
+      }
+    }
+
+    if(reasons.length){
+      flaggedCount++;
+      resultsBody.insertAdjacentHTML('beforeend', `<tr><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td></tr>`);
+    }
+  }
+
+  locationAuditRunning = false;
+  runBtn.disabled = false;
+  cancelBtn.style.display = 'none';
+  emptyEl.style.display = flaggedCount ? 'none' : '';
+  if(!flaggedCount && !stopped) emptyEl.textContent = `Checked all ${total} properties — nothing flagged.`;
+  statusEl.textContent = stopped
+    ? `Stopped — checked ${checked} of ${total}, ${flaggedCount} flagged. Run again anytime to pick up where this left off.`
+    : `Done — checked ${total}, ${flaggedCount} flagged.`;
+}
+
 
 function clearResolvedProperty(){
   State.currentProperty = null;
@@ -2953,12 +3151,6 @@ function syncMapFromFields(){
 }
 
 /* ============================= ADDRESS NORMALIZATION ============================= */
-// NZ addresses in the source data sometimes have formats OpenStreetMap's
-// geocoder chokes on but that a human (or Google Maps) reads fine — e.g.
-// "1-2/209 MAIN NORTH RD" (a hyphenated unit range before a slash), a
-// leading "FLAT 1 - 3," prefix, or an accidentally duplicated suburb/
-// postcode tail. This builds a list of reasonable reformattings to try
-// in order, so a failed lookup can often resolve itself automatically.
 function dedupeSegments(addr){
   const parts = addr.split(',').map(s=>s.trim()).filter(Boolean);
   const out = [];
@@ -3321,12 +3513,6 @@ function sanitizeForFilename(s){
   return (s||'').toString().trim().replace(/[^a-zA-Z0-9\-_]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
 }
 
-// Writes GPS EXIF and, deliberately, almost nothing else. Camera make/model,
-// maker notes, embedded thumbnails and other bulky/non-essential EXIF are
-// stripped out on every export (whether or not photo compression is on) —
-// that keeps files smaller and avoids the kind of embedded metadata that
-// trips up FileMaker WebDirect/Server imports. The one thing besides GPS
-// that's preserved is Orientation, so photos still display right-way-up.
 async function geoTagJpeg(dataUrl, lat, lon){
   let orientation;
   try{
@@ -3414,12 +3600,6 @@ function hasSeenSetupWizard(){
 function markSetupWizardSeen(){
   try{ localStorage.setItem(setupWizardSeenKey(), '1'); }catch(e){}
 }
-// Step 0 is the welcome splash (not counted in "Step X of 3"); 1, 2, 3 are
-// the real steps. The overlay (dark backdrop) is shown the instant we know
-// the wizard is needed, blocking interaction with the app underneath; the
-// welcome card itself fades in afterwards via a CSS animation-delay, so
-// there's a consistent ~0.8s beat before content appears rather than a
-// variable delay tied to how long data-loading happens to take.
 let setupWizardStep = 0;
 function maybeShowSetupWizard(){
   if(hasSeenSetupWizard()) return;
@@ -3595,11 +3775,6 @@ async function compressToJpegDataUrl(file, maxDim, quality){
   });
 }
 
-// Tags every selected image with GPS EXIF, returning [{name, blob}]. Any
-// format is converted to JPEG (needed to write EXIF at all); compression
-// is applied first if enabled, then the GPS tag is written last — so
-// location data is always intact in the final file regardless of the
-// compression setting. Reports progress via progLabel/progFill.
 async function tagSelectedImages(selected, lat, lon, progLabel, progFill){
   const results = [];
   const usedNames = new Set();
@@ -3732,12 +3907,6 @@ async function processAndExport(mode){
     });
   });
 
-  // Privacy: once a batch of photos has been geotagged and exported, we
-  // don't keep them in memory any longer than needed — their object URLs
-  // are revoked and they're dropped from the thumbnail grid. (Photos were
-  // never uploaded to Firebase or any other server in the first place —
-  // this just clears the local browser copy too. Any photos you hadn't
-  // selected for this batch are left untouched.)
   selected.forEach(img => URL.revokeObjectURL(img.url));
   State.images = State.images.filter(im => !im.selected);
   renderThumbs();
@@ -3976,6 +4145,10 @@ function renderLog(){
     return;
   }
   if(controls) controls.style.display = '';
+  if(!State.activityLogLoaded){
+    list.innerHTML = '<div class="empty-state">Loading…</div>';
+    return;
+  }
   if(!State.activityLog.length){
     list.innerHTML = '<div class="empty-state">No activity yet. Processed batches will appear here.</div>';
     return;
@@ -4043,6 +4216,8 @@ function bindEvents(){
   bindSettingsNav();
   bindThemeToggle();
   bindPropertySearch();
+  bindAddPropertyBox();
+  bindLocationAudit();
   bindImageIntake();
   bindDbTab();
   bindLogTab();
