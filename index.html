@@ -1339,8 +1339,11 @@ function updateRoleUI(){
     document.getElementById('newUserRole').value = 'trade';
   }
 
-  // Only Admin/Staff can add, upload, or clear properties — Trade accounts
-  // get a read-only, region-locked view of their own list.
+  // Only Admin/Staff can bulk-upload, edit rows, or clear properties on
+  // the Property DB tab — Trade accounts get a read-only, region-locked
+  // view there. Trade can still add one-off new properties from the Job
+  // tab's lookup box (see openAddPropertyBox), which is a separate,
+  // narrower path that only ever appends a single row.
   document.getElementById('uploadDbBtn').style.display = show ? '' : 'none';
   document.getElementById('clearDbBtn').style.display = canDeleteProperties() ? '' : 'none';
   document.getElementById('addRowBtn').style.display = show ? '' : 'none';
@@ -2815,7 +2818,11 @@ function renderAcList(){
   const q = document.getElementById('propSearch').value.trim();
   if(!acResults.length){
     if(!q){ list.classList.remove('show'); return; }
-    const canAdd = isStaffOrAdmin();
+    // Every signed-in role (Admin, Staff, and now Trade) can add a new
+    // property from here — Trade accounts are still limited to their own
+    // assigned region(s), same as everywhere else; they just can't edit
+    // or delete existing rows from the Property DB tab.
+    const canAdd = !!userProfile;
     list.innerHTML = State.properties.length
       ? `<div class="ac-empty">No matches for "${escapeHtml(q)}".${canAdd ? '' : ' Check the Property DB tab.'}</div>`
       : `<div class="ac-empty">No property list loaded yet${canAdd ? '' : ' — go to the Property DB tab to upload one.'}</div>`;
