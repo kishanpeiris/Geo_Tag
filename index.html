@@ -1936,6 +1936,10 @@ async function removeUserCore(uid, usernameLower, username, role, password){
 }
 
 async function removeUser(uid, usernameLower, username, role){
+  if((usernameLower || '').toLowerCase() === GLOBAL_ADMIN_USERNAME){
+    toast(`"${username}" is the app's global admin account and can't be removed.`, 'err');
+    return;
+  }
   const target = usersListCache.find(x => x.uid === uid);
   if(!confirm(`Remove account "${username}" (${roleLabel(role)})? They will no longer be able to sign in or access any data. Their past activity log and audit log entries are kept for the record — only the account itself is removed.`)) return;
   try{
@@ -1955,10 +1959,20 @@ async function removeUser(uid, usernameLower, username, role){
 // turn. Used by the selection toolbar above the Users table.
 async function removeUsers(users){
   if(!users.length) return;
-  const names = users.map(u => `"${u.username}" (${roleLabel(u.role)})`).join(', ');
-  if(!confirm(`Remove ${users.length} account${users.length>1?'s':''} — ${names}? They will no longer be able to sign in or access any data. Past activity/audit log entries are kept for the record.`)) return;
+
+  // The global admin can never be removed, even as part of a batch —
+  // skip them and still process the rest of the selection.
+  const protectedUsers = users.filter(u => (u.usernameLower || '').toLowerCase() === GLOBAL_ADMIN_USERNAME);
+  const removableUsers = users.filter(u => (u.usernameLower || '').toLowerCase() !== GLOBAL_ADMIN_USERNAME);
+  if(protectedUsers.length){
+    toast(`${protectedUsers.map(u => `"${u.username}"`).join(', ')} is the global admin account and can't be removed — skipped.`, 'err');
+  }
+  if(!removableUsers.length) return;
+
+  const names = removableUsers.map(u => `"${u.username}" (${roleLabel(u.role)})`).join(', ');
+  if(!confirm(`Remove ${removableUsers.length} account${removableUsers.length>1?'s':''} — ${names}? They will no longer be able to sign in or access any data. Past activity/audit log entries are kept for the record.`)) return;
   let okCount = 0;
-  for(const u of users){
+  for(const u of removableUsers){
     try{
       await removeUserCore(u.uid, u.usernameLower, u.username, u.role, u.password);
       okCount++;
@@ -1967,7 +1981,7 @@ async function removeUsers(users){
     }
   }
   selectedUserUids.clear();
-  toast(`Removed ${okCount} of ${users.length} account${users.length>1?'s':''}`, 'ok');
+  toast(`Removed ${okCount} of ${removableUsers.length} account${removableUsers.length>1?'s':''}`, 'ok');
   await renderUsersTab();
   State.auditLog = await loadAuditLog();
   State.auditLogLoaded = true;
@@ -2203,6 +2217,7 @@ function renderUsersTable(){
   }
   body.innerHTML = users.map(u => {
     const isSelf = currentUser && u.uid === currentUser.uid;
+    const isProtectedAdmin = (u.usernameLower || '').toLowerCase() === GLOBAL_ADMIN_USERNAME;
     const active = !!u.lastLoginAt;
     const showPw = canViewPassword(u.role) && u.password;
     const contactBits = [];
@@ -2216,8 +2231,8 @@ function renderUsersTable(){
     }
     return `
     <tr data-uid="${escapeAttr(u.uid)}" data-username="${escapeAttr(u.username||'')}" data-role="${escapeAttr(u.role||'')}" data-namelower="${escapeAttr(u.usernameLower||'')}">
-      <td><input type="checkbox" class="user-select-cb" value="${escapeAttr(u.uid)}" ${selectedUserUids.has(u.uid) ? 'checked' : ''} aria-label="Select ${escapeAttr(u.username||'')}"${isSelf ? ' title="This is you"' : ''}></td>
-      <td>${escapeHtml(u.username || '—')}${isSelf ? ` <span style="color:var(--text-faint); font-size:11px;">(you)</span>` : ''}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
+      <td><input type="checkbox" class="user-select-cb" value="${escapeAttr(u.uid)}" ${selectedUserUids.has(u.uid) ? 'checked' : ''} aria-label="Select ${escapeAttr(u.username||'')}"${isSelf ? ' title="This is you"' : (isProtectedAdmin ? ' title="Global admin — this account can never be removed"' : '')}></td>
+      <td>${escapeHtml(u.username || '—')}${isSelf ? ` <span style="color:var(--text-faint); font-size:11px;">(you)</span>` : ''}${isProtectedAdmin ? ` <span style="color:var(--text-faint); font-size:11px;">(global admin)</span>` : ''}${contactBits.length ? `<div style="color:var(--text-faint); font-size:11px; margin-top:2px;">${contactBits.join(' · ')}</div>` : ''}
         ${showPw ? `<div class="reveal-password" style="margin-top:4px;"><span class="mono-input" data-pwtext style="display:inline-block; padding:2px 8px; font-size:11px;">••••••••</span><button type="button" data-act="togglepw" aria-label="Show password" title="Show password">${EYE_ICON}</button></div>` : ''}
       </td>
       <td><span class="role-badge ${escapeAttr(u.role||'')}">${roleLabel(u.role)}</span></td>
@@ -2266,7 +2281,7 @@ function updateBulkToolbar(){
   const emailable = users.filter(u => canViewPassword(u.role) && u.password);
   document.getElementById('bulkEmailBtn').disabled = !emailable.length;
 
-  const removable = users.length > 0 && users.every(u => (isAdmin() || u.role === 'trade') && !(currentUser && u.uid === currentUser.uid));
+  const removable = users.length > 0 && users.every(u => (isAdmin() || u.role === 'trade') && !(currentUser && u.uid === currentUser.uid) && (u.usernameLower || '').toLowerCase() !== GLOBAL_ADMIN_USERNAME);
   document.getElementById('bulkRemoveBtn').disabled = !removable;
 }
 
