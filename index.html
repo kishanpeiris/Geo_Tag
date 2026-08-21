@@ -1027,26 +1027,44 @@
         <div class="settings-subpanel" id="subpanel-locationAudit">
           <div class="panel-head"><span class="eyebrow">GEO</span><h2>Location audit</h2></div>
           <div class="panel-sub">
-            Checks every property in the currently active list (<b id="locationAuditListName">—</b>) —
-            duplicate IDs, missing addresses, saved locations that land outside New Zealand, and any address
-            that can't be located at all. Anything already located is reused from the saved cache at no cost;
-            only new/uncached addresses trigger a fresh lookup, at roughly one per second (OpenStreetMap's
-            usage limit) — so a first run on a large, mostly-uncached list can take a while. You can stop
-            anytime — progress already made is saved. Every located address (whether reused from cache or
-            freshly found this run) is saved back to the shared location cache, so the more you run this,
-            the less there is left to look up next time, for everyone using this list — not just this device.
+            Checks every property in the selected list — duplicate IDs, missing addresses, saved locations
+            that land outside New Zealand, and any address that can't be located at all. Anything already
+            located is reused from the saved cache at no cost; only new/uncached addresses trigger a fresh
+            lookup, at roughly one per second (OpenStreetMap's usage limit) — so a first run on a large,
+            mostly-uncached list can take a while. You can stop anytime — progress already made is saved.
+            Every located address (whether reused from cache or freshly found this run) is saved back to the
+            shared location cache, so the more you run this, the less there is left to look up next time, for
+            everyone using this list — not just this device.
           </div>
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+            <label class="field-label" style="margin:0;">Region</label>
+            <select id="locationAuditRegionSelect" class="mono-input" style="width:auto;"></select>
             <select id="locationAuditScope" class="mono-input" style="width:auto;">
               <option value="all">Check all properties</option>
               <option value="flagged" disabled>Only previously flagged</option>
             </select>
-            <button class="btn small primary" id="locationAuditRunBtn">Run audit</button>
+            <button class="btn small primary" id="locationAuditRunBtn">Run New Audit</button>
             <button class="btn small ghost danger" id="locationAuditCancelBtn" style="display:none;">Stop</button>
             <span style="font-size:12.5px; color:var(--text-dim);" id="locationAuditStatus"></span>
           </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; padding:10px 14px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px;">
+            <label class="field-label" style="margin:0;">Saved audits</label>
+            <select id="locationAuditSavedSelect" class="mono-input" style="width:auto; max-width:340px;">
+              <option value="">— none saved yet —</option>
+            </select>
+            <button class="btn small" id="locationAuditRecheckBtn" disabled>↻ Re-check</button>
+            <button class="btn small ghost danger" id="locationAuditDeleteSavedBtn" disabled>Delete</button>
+            <button class="btn small ghost" id="locationAuditSaveBtn" style="display:none; margin-left:auto;">💾 Save this audit</button>
+          </div>
           <div class="progress-wrap" id="locationAuditProgressWrap">
             <div class="progress-bar"><div class="progress-fill" id="locationAuditProgressFill" style="width:0%;"></div></div>
+          </div>
+          <div class="flex-between" id="locationAuditSelectionBar" style="display:none; margin-bottom:10px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px; flex-wrap:wrap; gap:10px;">
+            <span style="font-size:12.5px; color:var(--text-dim);"><span id="locationAuditSelectedCount">0</span> selected</span>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn small ghost" id="locationAuditClearSelectionBtn" style="display:none;">Clear selection</button>
+              <button class="btn small danger ghost" id="locationAuditRemoveSelectedBtn" disabled>Remove selected</button>
+            </div>
           </div>
           <div class="flex-between" id="locationAuditRemediationBar" style="display:none; margin-bottom:10px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px;">
             <span style="font-size:12.5px; color:var(--text-dim);" id="locationAuditDupSummary"></span>
@@ -1054,12 +1072,13 @@
           </div>
           <div class="db-scroll">
             <table class="db-table">
-              <thead><tr><th style="width:24%">Property ID</th><th style="width:38%">Address</th><th>Issue</th><th style="width:70px">Action</th></tr></thead>
+              <thead><tr><th style="width:32px"><input type="checkbox" id="locationAuditSelectAllCb" aria-label="Select all"></th><th style="width:22%">Property ID</th><th style="width:36%">Address</th><th>Issue</th><th style="width:70px">Action</th></tr></thead>
               <tbody id="locationAuditResultsBody"></tbody>
             </table>
           </div>
-          <div class="empty-state" id="locationAuditEmpty">Run the audit to check the active list.</div>
+          <div class="empty-state" id="locationAuditEmpty">Pick a region above and run an audit — or select a saved audit and click Re-check.</div>
         </div>
+
 
         <!-- ---- Email Template (Admin / Staff) ---- -->
         <div class="settings-subpanel" id="subpanel-emailTemplate">
@@ -1408,7 +1427,7 @@ function bindSettingsNav(){
       if(panel) panel.classList.add('active');
       if(btn.dataset.subtab === 'activity') ensureActivityLogLoaded();
       if(btn.dataset.subtab === 'audit') ensureAuditLogLoaded();
-      if(btn.dataset.subtab === 'locationAudit') renderLocationAuditPanel();
+      if(btn.dataset.subtab === 'locationAudit'){ renderLocationAuditPanel(); ensureSavedLocationAuditsLoaded(); }
     });
   });
 }
@@ -3044,23 +3063,33 @@ let locationAuditRunning = false;
 let locationAuditCancelFlag = false;
 let locationAuditLastFlaggedCodes = null; // Set of codes flagged by the most recent run on this list
 let locationAuditLastListId = null;        // which list that was, so switching regions resets it
-let locationAuditRowRefs = new Map();      // token -> { p, region, isDup } for whatever's currently on screen
+let locationAuditListId = null;            // the region this panel is currently set to audit — independent of the Job/DB tab's activeListId
+let locationAuditRowRefs = new Map();      // token -> { p, region, isDup, reasons } for whatever's currently on screen
 let locationAuditRegionArrays = {};        // region -> the live array read from Firestore, so remediation can splice + save it directly
 let locationAuditRowTokenSeq = 1;
+let locationAuditSelectedTokens = new Set(); // tokens currently checked in the results table
+let lastAuditRunContext = null;            // snapshot of the most recently finished run, ready to hand to "Save this audit"
+
+const LOCATION_AUDITS_COLLECTION = 'location_audits';
+let savedLocationAudits = [];
+let savedLocationAuditsLoaded = false;
 
 function renderLocationAuditPanel(){
-  document.getElementById('locationAuditListName').textContent =
-    activeListId ? (activeListId === 'ALL' ? 'Both regions (merged)' : regionLabel(activeListId)) : '—';
-  if(activeListId !== locationAuditLastListId){
-    locationAuditLastFlaggedCodes = null;
-    locationAuditLastListId = activeListId;
-  }
+  populateLocationAuditRegionSelect();
   updateLocationAuditScopeOptions();
+}
+function populateLocationAuditRegionSelect(){
+  const sel = document.getElementById('locationAuditRegionSelect');
+  if(!sel) return;
+  if(!locationAuditListId) locationAuditListId = activeListId || 'ALL';
+  const options = REGIONS.map(r => `<option value="${escapeAttr(r.id)}">${escapeHtml(regionLabel(r.id))}</option>`).join('');
+  sel.innerHTML = `<option value="ALL">Both regions (merged)</option>` + options;
+  sel.value = locationAuditListId;
 }
 function updateLocationAuditScopeOptions(){
   const scopeSelect = document.getElementById('locationAuditScope');
   const flaggedOpt = scopeSelect.querySelector('option[value="flagged"]');
-  if(locationAuditLastFlaggedCodes && locationAuditLastFlaggedCodes.size){
+  if(locationAuditLastFlaggedCodes && locationAuditLastFlaggedCodes.size && locationAuditLastListId === locationAuditListId){
     flaggedOpt.disabled = false;
     flaggedOpt.textContent = `Only previously flagged (${locationAuditLastFlaggedCodes.size})`;
   } else {
@@ -3070,18 +3099,134 @@ function updateLocationAuditScopeOptions(){
   }
 }
 function bindLocationAudit(){
-  document.getElementById('locationAuditRunBtn').addEventListener('click', runLocationAudit);
+  document.getElementById('locationAuditRunBtn').addEventListener('click', ()=>runLocationAudit());
   document.getElementById('locationAuditCancelBtn').addEventListener('click', ()=>{ locationAuditCancelFlag = true; });
   document.getElementById('locationAuditBulkRemoveDupBtn').addEventListener('click', bulkRemoveDuplicateAuditRows);
+  document.getElementById('locationAuditRegionSelect').addEventListener('change', (e)=>{
+    locationAuditListId = e.target.value;
+    locationAuditLastFlaggedCodes = null;
+    locationAuditLastListId = null;
+    updateLocationAuditScopeOptions();
+  });
+  document.getElementById('locationAuditSelectAllCb').addEventListener('change', (e)=>{
+    const checked = e.target.checked;
+    if(checked) locationAuditRowRefs.forEach((_, token) => locationAuditSelectedTokens.add(token));
+    else locationAuditSelectedTokens.clear();
+    document.querySelectorAll('#locationAuditResultsBody .audit-select-cb').forEach(cb => { cb.checked = checked; });
+    updateLocationAuditSelectionToolbar();
+  });
+  document.getElementById('locationAuditClearSelectionBtn').addEventListener('click', ()=>{
+    locationAuditSelectedTokens.clear();
+    document.querySelectorAll('#locationAuditResultsBody .audit-select-cb').forEach(cb => { cb.checked = false; });
+    updateLocationAuditSelectionToolbar();
+  });
+  document.getElementById('locationAuditRemoveSelectedBtn').addEventListener('click', removeSelectedAuditRows);
+  document.getElementById('locationAuditSavedSelect').addEventListener('change', updateSavedAuditControlsState);
+  document.getElementById('locationAuditRecheckBtn').addEventListener('click', ()=>{
+    const id = document.getElementById('locationAuditSavedSelect').value;
+    const doc = savedLocationAudits.find(d => d.id === id);
+    if(doc) runLocationAudit(doc);
+  });
+  document.getElementById('locationAuditDeleteSavedBtn').addEventListener('click', ()=>{
+    deleteSavedLocationAudit(document.getElementById('locationAuditSavedSelect').value);
+  });
+  document.getElementById('locationAuditSaveBtn').addEventListener('click', ()=>{
+    if(lastAuditRunContext) saveCurrentLocationAudit(lastAuditRunContext);
+  });
 }
 
-// Loads the active list's rows for the audit, tagging each row with the
-// region (property_list document) it actually lives in — needed so
-// remediation (removing one flagged duplicate row) can save back to the
-// correct per-region document even while viewing "Both regions (merged)".
-// Returns the same array objects Firestore was read into for each region,
-// so those arrays can be spliced and saved directly by the remove
-// handlers below rather than re-fetched.
+/* ---- saved audits (Firestore) — a named snapshot of whatever was still
+   flagged at the end of a run, so an admin can come back later and
+   re-check just those specific properties instead of re-scanning the
+   whole list. ---- */
+async function ensureSavedLocationAuditsLoaded(){
+  if(savedLocationAuditsLoaded) return;
+  savedLocationAudits = await loadSavedLocationAudits();
+  savedLocationAuditsLoaded = true;
+  renderSavedLocationAuditsSelect();
+}
+async function loadSavedLocationAudits(){
+  if(!isAdmin()) return [];
+  try{
+    const snap = await db.collection(LOCATION_AUDITS_COLLECTION).orderBy('createdAtClient', 'desc').limit(50).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }catch(e){
+    console.error('loadSavedLocationAudits failed', e);
+    toast('Could not load saved audits: ' + e.message, 'err');
+    return [];
+  }
+}
+async function saveCurrentLocationAudit(runCtx){
+  const saveBtn = document.getElementById('locationAuditSaveBtn');
+  if(saveBtn) saveBtn.disabled = true;
+  const now = new Date();
+  const name = now.toLocaleString('en-NZ', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+  const docData = {
+    name,
+    createdAtClient: now.toISOString(),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: userProfile ? userProfile.username : null,
+    listId: runCtx.listId,
+    scope: runCtx.scope,
+    status: runCtx.status,
+    checked: runCtx.checked,
+    total: runCtx.total,
+    issueCount: runCtx.rows.length,
+    rows: runCtx.rows
+  };
+  try{
+    const ref = await db.collection(LOCATION_AUDITS_COLLECTION).add(docData);
+    savedLocationAudits.unshift({ id: ref.id, ...docData });
+    savedLocationAuditsLoaded = true;
+    renderSavedLocationAuditsSelect(ref.id);
+    toast(`Saved audit "${name}" (${docData.issueCount} issue${docData.issueCount!==1?'s':''})`, 'ok');
+  }catch(err){
+    toast('Could not save this audit: ' + err.message, 'err');
+  }
+  if(saveBtn) saveBtn.disabled = false;
+}
+async function deleteSavedLocationAudit(id){
+  if(!id) return;
+  const doc = savedLocationAudits.find(d => d.id === id);
+  if(!confirm(`Delete saved audit "${doc ? doc.name : id}"? This can't be undone.`)) return;
+  try{
+    await db.collection(LOCATION_AUDITS_COLLECTION).doc(id).delete();
+    savedLocationAudits = savedLocationAudits.filter(d => d.id !== id);
+    renderSavedLocationAuditsSelect();
+    toast('Saved audit deleted', 'ok');
+  }catch(e){
+    toast('Could not delete that saved audit: ' + e.message, 'err');
+  }
+}
+function renderSavedLocationAuditsSelect(selectId){
+  const sel = document.getElementById('locationAuditSavedSelect');
+  if(!sel) return;
+  if(!savedLocationAudits.length){
+    sel.innerHTML = `<option value="">— none saved yet —</option>`;
+  } else {
+    sel.innerHTML = `<option value="">— select a saved audit —</option>` + savedLocationAudits.map(d => {
+      const regionTxt = d.listId === 'ALL' ? 'Both regions' : regionLabel(d.listId);
+      const statusTxt = d.status === 'stopped' ? ', stopped early' : '';
+      return `<option value="${escapeAttr(d.id)}">${escapeHtml(d.name)} — ${d.issueCount} issue${d.issueCount!==1?'s':''} (${escapeHtml(regionTxt)}${statusTxt})</option>`;
+    }).join('');
+  }
+  if(selectId) sel.value = selectId;
+  updateSavedAuditControlsState();
+}
+function updateSavedAuditControlsState(){
+  const sel = document.getElementById('locationAuditSavedSelect');
+  const has = !!(sel && sel.value);
+  document.getElementById('locationAuditRecheckBtn').disabled = !has || locationAuditRunning;
+  document.getElementById('locationAuditDeleteSavedBtn').disabled = !has || locationAuditRunning;
+}
+
+// Loads a region-or-merged list's rows for the audit, tagging each row
+// with the region (property_list document) it actually lives in — needed
+// so remediation (removing one flagged duplicate row) can save back to
+// the correct per-region document even while auditing "Both regions
+// (merged)". Returns the same array objects Firestore was read into for
+// each region, so those arrays can be spliced and saved directly by the
+// remove handlers below rather than re-fetched.
 async function loadRegionTaggedRowsForAudit(listId){
   locationAuditRegionArrays = {};
   if(listId === 'ALL'){
@@ -3101,12 +3246,17 @@ async function loadRegionTaggedRowsForAudit(listId){
   return arr;
 }
 
-async function runLocationAudit(){
-  if(locationAuditRunning || !activeListId) return;
+// Runs a fresh audit over the selected region, OR — when recheckDoc is
+// passed (from the "Saved audits" row) — re-checks only the specific
+// properties captured in that saved snapshot, and reports each one as
+// either still flagged or resolved since it was saved.
+async function runLocationAudit(recheckDoc){
+  const listIdToUse = recheckDoc ? recheckDoc.listId : locationAuditListId;
+  if(locationAuditRunning || !listIdToUse) return;
   locationAuditRunning = true;
   locationAuditCancelFlag = false;
 
-  const scope = document.getElementById('locationAuditScope').value;
+  const scope = recheckDoc ? 'recheck' : document.getElementById('locationAuditScope').value;
   const runBtn = document.getElementById('locationAuditRunBtn');
   const cancelBtn = document.getElementById('locationAuditCancelBtn');
   const statusEl = document.getElementById('locationAuditStatus');
@@ -3114,37 +3264,61 @@ async function runLocationAudit(){
   const progressFill = document.getElementById('locationAuditProgressFill');
   const resultsBody = document.getElementById('locationAuditResultsBody');
   const emptyEl = document.getElementById('locationAuditEmpty');
+  const regionSelect = document.getElementById('locationAuditRegionSelect');
+  const scopeSelect = document.getElementById('locationAuditScope');
+  const saveBtn = document.getElementById('locationAuditSaveBtn');
 
   runBtn.disabled = true;
-  document.getElementById('locationAuditScope').disabled = true;
+  regionSelect.disabled = true;
+  scopeSelect.disabled = true;
+  document.getElementById('locationAuditRecheckBtn').disabled = true;
+  document.getElementById('locationAuditDeleteSavedBtn').disabled = true;
+  saveBtn.style.display = 'none';
   cancelBtn.style.display = '';
   progressWrap.classList.add('show');
   resultsBody.innerHTML = '';
   emptyEl.style.display = 'none';
   locationAuditRowRefs = new Map();
+  locationAuditSelectedTokens = new Set();
   hideDupRemediationBar();
-  let flaggedCount = 0, newlyLocatedCount = 0, reusedFromCacheCount = 0;
+  let flaggedCount = 0, newlyLocatedCount = 0, reusedFromCacheCount = 0, resolvedCount = 0;
   const newlyFlaggedCodes = new Set();
 
   // Duplicate-ID detection always needs the full list for context, even
-  // when only re-checking a previously-flagged subset. Rows come back
-  // tagged with their source region (see loadRegionTaggedRowsForAudit)
-  // so a flagged duplicate can be removed from the right property list
-  // even while viewing "Both regions (merged)".
-  const allRows = await loadRegionTaggedRowsForAudit(activeListId);
+  // when only re-checking a subset. Rows come back tagged with their
+  // source region (see loadRegionTaggedRowsForAudit) so a flagged
+  // duplicate can be removed from the right property list even while
+  // auditing "Both regions (merged)".
+  const allRows = await loadRegionTaggedRowsForAudit(listIdToUse);
   const codeCounts = {};
   allRows.forEach(p => { const c = (p.code||'').trim().toLowerCase(); if(c) codeCounts[c] = (codeCounts[c]||0) + 1; });
 
-  const rows = (scope === 'flagged' && locationAuditLastFlaggedCodes)
-    ? allRows.filter(p => locationAuditLastFlaggedCodes.has((p.code||'').trim().toLowerCase()))
-    : allRows;
+  let rows;
+  if(recheckDoc){
+    // Only look at the exact properties captured in the saved snapshot.
+    // Anything in the snapshot that no longer exists in the list at all
+    // (already removed some other way) is reported as resolved without
+    // needing a lookup.
+    const wantedKeys = new Set(recheckDoc.rows.map(r => (r.region||recheckDoc.listId) + '|' + (r.code||'').trim().toLowerCase()));
+    rows = allRows.filter(p => wantedKeys.has(p._region + '|' + (p.code||'').trim().toLowerCase()));
+    const foundKeys = new Set(rows.map(p => p._region + '|' + (p.code||'').trim().toLowerCase()));
+    const removedSinceSaved = recheckDoc.rows.filter(r => !foundKeys.has((r.region||recheckDoc.listId) + '|' + (r.code||'').trim().toLowerCase()));
+    removedSinceSaved.forEach(r => {
+      resolvedCount++;
+      resultsBody.insertAdjacentHTML('beforeend', `<tr style="opacity:0.65;"><td></td><td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.address||'')}</td><td style="color:var(--green);">✓ Resolved — no longer in the list</td><td></td></tr>`);
+    });
+  } else {
+    rows = (scope === 'flagged' && locationAuditLastFlaggedCodes)
+      ? allRows.filter(p => locationAuditLastFlaggedCodes.has((p.code||'').trim().toLowerCase()))
+      : allRows;
+  }
   const total = rows.length;
 
   let checked = 0, stopped = false;
   for(const p of rows){
     if(locationAuditCancelFlag){ stopped = true; break; }
     checked++;
-    progressFill.style.width = Math.round(checked/total*100) + '%';
+    if(total) progressFill.style.width = Math.round(checked/total*100) + '%';
     statusEl.textContent = `Checking ${checked} of ${total}… (${flaggedCount} flagged so far)`;
 
     const reasons = [];
@@ -3189,48 +3363,80 @@ async function runLocationAudit(){
       flaggedCount++;
       newlyFlaggedCodes.add(codeKey);
       const token = 'r' + (locationAuditRowTokenSeq++);
-      locationAuditRowRefs.set(token, { p, region: p._region, isDup });
+      locationAuditRowRefs.set(token, { p, region: p._region, isDup, reasons: reasons.slice() });
       const actionHtml = isDup
         ? `<button class="btn small danger ghost" data-act="removeAuditRow" data-token="${escapeAttr(token)}" style="padding:4px 8px;" title="Remove this one duplicate entry">Remove</button>`
         : '';
-      resultsBody.insertAdjacentHTML('beforeend', `<tr data-token="${escapeAttr(token)}"><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td><td>${actionHtml}</td></tr>`);
+      resultsBody.insertAdjacentHTML('beforeend', `<tr data-token="${escapeAttr(token)}"><td><input type="checkbox" class="audit-select-cb" data-token="${escapeAttr(token)}" aria-label="Select ${escapeAttr(p.code)}"></td><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td><td>${actionHtml}</td></tr>`);
+    } else if(recheckDoc){
+      resolvedCount++;
+      resultsBody.insertAdjacentHTML('beforeend', `<tr style="opacity:0.65;"><td></td><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td style="color:var(--green);">✓ Resolved — no longer flagged</td><td></td></tr>`);
     }
   }
 
   locationAuditRunning = false;
   runBtn.disabled = false;
-  document.getElementById('locationAuditScope').disabled = false;
+  regionSelect.disabled = false;
+  scopeSelect.disabled = false;
   cancelBtn.style.display = 'none';
-  emptyEl.style.display = flaggedCount ? 'none' : '';
-  if(!flaggedCount && !stopped) emptyEl.textContent = `Checked all ${total} properties — nothing flagged.`;
+  emptyEl.style.display = (flaggedCount || resolvedCount) ? 'none' : '';
+  if(!flaggedCount && !resolvedCount && !stopped) emptyEl.textContent = `Checked all ${total} properties — nothing flagged.`;
 
   // Only replace the "previously flagged" set with a full-list run's
-  // results — a partial ("flagged only") re-run shouldn't shrink it based
-  // on properties it never looked at.
-  if(scope === 'all' && !stopped){
-    locationAuditLastFlaggedCodes = newlyFlaggedCodes;
-    locationAuditLastListId = activeListId;
-  } else if(scope === 'flagged' && !stopped){
-    locationAuditLastFlaggedCodes = newlyFlaggedCodes; // whatever's still flagged after re-checking
+  // results, and only for a normal (non-recheck) run — a partial
+  // ("flagged only") re-run shouldn't shrink it based on properties it
+  // never looked at, and a saved-audit re-check is a different, narrower
+  // thing entirely.
+  if(!recheckDoc){
+    if(scope === 'all' && !stopped){
+      locationAuditLastFlaggedCodes = newlyFlaggedCodes;
+      locationAuditLastListId = listIdToUse;
+    } else if(scope === 'flagged' && !stopped){
+      locationAuditLastFlaggedCodes = newlyFlaggedCodes; // whatever's still flagged after re-checking
+    }
+    updateLocationAuditScopeOptions();
   }
-  updateLocationAuditScopeOptions();
 
-  statusEl.textContent = stopped
-    ? `Stopped — checked ${checked} of ${total}, ${flaggedCount} flagged. Run again anytime to pick up where this left off.`
-    : `Done — checked ${total} (${reusedFromCacheCount} already saved, ${newlyLocatedCount} newly located and saved for next time), ${flaggedCount} flagged.`;
+  if(recheckDoc){
+    statusEl.textContent = stopped
+      ? `Stopped — checked ${checked} of ${total} from "${recheckDoc.name}", ${flaggedCount} still flagged, ${resolvedCount} resolved so far.`
+      : `Re-check of "${recheckDoc.name}" done — ${flaggedCount} of ${recheckDoc.rows.length} still flagged, ${resolvedCount} resolved.`;
+  } else {
+    statusEl.textContent = stopped
+      ? `Stopped — checked ${checked} of ${total}, ${flaggedCount} flagged. Run again anytime to pick up where this left off.`
+      : `Done — checked ${total} (${reusedFromCacheCount} already saved, ${newlyLocatedCount} newly located and saved for next time), ${flaggedCount} flagged.`;
+  }
+
+  lastAuditRunContext = {
+    listId: listIdToUse,
+    scope,
+    status: stopped ? 'stopped' : 'completed',
+    checked, total,
+    rows: Array.from(locationAuditRowRefs.values()).map(ref => ({
+      code: ref.p.code, address: ref.p.address || '', region: ref.region, reasons: ref.reasons
+    }))
+  };
+  saveBtn.style.display = '';
 
   bindLocationAuditResultsClicks();
   updateDupRemediationBar();
+  updateLocationAuditSelectionToolbar();
+  updateSavedAuditControlsState();
 }
 
-/* ---- remediation: remove flagged duplicate property IDs directly from
-   the audit results, without leaving Settings. A "Remove" button appears
-   only on rows flagged for the duplicate reason; there's also a bulk
-   "Remove extra duplicates" action that keeps the first entry in each
-   duplicate group and removes the rest in one go. Both splice the same
-   in-memory array Firestore was read into for that row's region and save
-   it back — so a merged "Both regions" audit still writes to the correct
-   single-region property list. ---- */
+/* ---- remediation: remove flagged rows directly from the audit results,
+   without leaving Settings. Three ways in:
+   - per-row "Remove" — only on rows flagged for the duplicate reason.
+   - "Remove extra duplicates" (bulk) — keeps the first entry in each
+     duplicate group and removes the rest in one go.
+   - checkbox select + "Remove selected" — removes whichever rows are
+     ticked, of any flagged reason, not just duplicates.
+   All three funnel into performAuditRowRemoval(), which splices the same
+   in-memory array Firestore was read into for each row's region and
+   saves it back (batched per region) — so a merged "Both regions" audit
+   still writes to the correct single-region property list, and a failed
+   save reverts cleanly instead of leaving the in-memory copy out of sync
+   with what's actually stored. ---- */
 function bindLocationAuditResultsClicks(){
   const resultsBody = document.getElementById('locationAuditResultsBody');
   resultsBody.onclick = (e)=>{
@@ -3238,6 +3444,54 @@ function bindLocationAuditResultsClicks(){
     if(!btn) return;
     removeSingleAuditRow(btn.dataset.token, btn);
   };
+  resultsBody.onchange = (e)=>{
+    const cb = e.target.closest('.audit-select-cb');
+    if(!cb) return;
+    if(cb.checked) locationAuditSelectedTokens.add(cb.dataset.token);
+    else locationAuditSelectedTokens.delete(cb.dataset.token);
+    updateLocationAuditSelectionToolbar();
+  };
+}
+
+// Splices `items` ({token, p, region}) out of their region's live array
+// and saves each affected region once (not once per row). Reverts any
+// region whose save fails, so the in-memory copy never drifts from what's
+// actually in Firestore. Returns how many rows were actually removed.
+async function performAuditRowRemoval(items){
+  const byRegion = new Map();
+  items.forEach(item => {
+    if(!byRegion.has(item.region)) byRegion.set(item.region, []);
+    byRegion.get(item.region).push(item);
+  });
+  let removedCount = 0;
+  const touchedRegions = [];
+  for(const [region, regionItems] of byRegion.entries()){
+    const arr = locationAuditRegionArrays[region];
+    if(!arr) continue;
+    const spliced = [];
+    regionItems.forEach(item => {
+      const idx = arr.indexOf(item.p);
+      if(idx !== -1){ arr.splice(idx, 1); spliced.push({ item, idx }); }
+    });
+    if(!spliced.length) continue;
+    try{
+      await savePropertiesForList(region, arr);
+      touchedRegions.push(region);
+      spliced.forEach(({item}) => {
+        locationAuditRowRefs.delete(item.token);
+        locationAuditSelectedTokens.delete(item.token);
+        const tr = document.querySelector('#locationAuditResultsBody tr[data-token="' + item.token + '"]');
+        if(tr) tr.remove();
+        removedCount++;
+      });
+    }catch(err){
+      // Put everything for this region back in its original position.
+      spliced.sort((a,b)=> a.idx - b.idx).forEach(({item, idx}) => arr.splice(idx, 0, item.p));
+      toast(`Could not save changes to ${regionLabel(region)}: ` + err.message, 'err');
+    }
+  }
+  for(const region of touchedRegions) await syncActivePropertiesAfterAuditEdit(region);
+  return removedCount;
 }
 
 async function removeSingleAuditRow(token, btn){
@@ -3246,28 +3500,32 @@ async function removeSingleAuditRow(token, btn){
   const { p, region } = ref;
   if(!confirm(`Remove this entry — ${p.code} in ${regionLabel(region)} — "${p.address || '(no address)'}"?\n\nThis removes only this one duplicate row; any other entries with the same property ID are left untouched.`)) return;
   if(btn) btn.disabled = true;
-  const arr = locationAuditRegionArrays[region];
-  const idx = arr ? arr.indexOf(p) : -1;
-  if(idx === -1){
+  const removedCount = await performAuditRowRemoval([{ token, p, region }]);
+  if(removedCount){
+    toast(`Removed "${p.code}"`, 'ok');
+  } else {
     toast('Could not find that row anymore — try running the audit again.', 'err');
     if(btn) btn.disabled = false;
-    return;
   }
-  arr.splice(idx, 1);
-  try{
-    await savePropertiesForList(region, arr);
-  }catch(err){
-    arr.splice(idx, 0, p);
-    toast('Could not remove that entry: ' + err.message, 'err');
-    if(btn) btn.disabled = false;
-    return;
-  }
-  locationAuditRowRefs.delete(token);
-  const tr = document.querySelector('#locationAuditResultsBody tr[data-token="' + token + '"]');
-  if(tr) tr.remove();
-  await syncActivePropertiesAfterAuditEdit(region);
-  toast(`Removed "${p.code}"`, 'ok');
   updateDupRemediationBar();
+  updateLocationAuditSelectionToolbar();
+  updateAuditFlaggedStatusCount();
+  maybeShowAuditEmptyState();
+}
+
+async function removeSelectedAuditRows(){
+  const items = Array.from(locationAuditSelectedTokens)
+    .map(token => { const ref = locationAuditRowRefs.get(token); return ref ? { token, p: ref.p, region: ref.region } : null; })
+    .filter(Boolean);
+  if(!items.length) return;
+  if(!confirm(`Remove ${items.length} selected row${items.length>1?'s':''}? This can't be undone.`)) return;
+
+  const removeBtn = document.getElementById('locationAuditRemoveSelectedBtn');
+  if(removeBtn) removeBtn.disabled = true;
+  const removedCount = await performAuditRowRemoval(items);
+  if(removedCount) toast(`Removed ${removedCount} row${removedCount>1?'s':''}`, 'ok');
+  updateDupRemediationBar();
+  updateLocationAuditSelectionToolbar();
   updateAuditFlaggedStatusCount();
   maybeShowAuditEmptyState();
 }
@@ -3298,43 +3556,11 @@ async function bulkRemoveDuplicateAuditRows(){
 
   const bulkBtn = document.getElementById('locationAuditBulkRemoveDupBtn');
   bulkBtn.disabled = true;
-
-  // One save per affected region (not one per row) to keep this efficient
-  // even when there are dozens/hundreds of extra duplicates.
-  const byRegion = new Map();
-  toRemove.forEach(item => {
-    if(!byRegion.has(item.region)) byRegion.set(item.region, []);
-    byRegion.get(item.region).push(item);
-  });
-
-  let removedCount = 0;
-  const touchedRegions = [];
-  for(const [region, items] of byRegion.entries()){
-    const arr = locationAuditRegionArrays[region];
-    if(!arr) continue;
-    items.forEach(item => {
-      const idx = arr.indexOf(item.p);
-      if(idx !== -1) arr.splice(idx, 1);
-    });
-    try{
-      await savePropertiesForList(region, arr);
-      touchedRegions.push(region);
-      removedCount += items.length;
-      items.forEach(item => {
-        locationAuditRowRefs.delete(item.token);
-        const tr = document.querySelector('#locationAuditResultsBody tr[data-token="' + item.token + '"]');
-        if(tr) tr.remove();
-      });
-    }catch(err){
-      toast(`Could not save changes to ${regionLabel(region)}: ` + err.message, 'err');
-    }
-  }
-
-  for(const region of touchedRegions) await syncActivePropertiesAfterAuditEdit(region);
-
+  const removedCount = await performAuditRowRemoval(toRemove);
   bulkBtn.disabled = false;
-  updateDupRemediationBar();
   if(removedCount) toast(`Removed ${removedCount} duplicate row${removedCount>1?'s':''}`, 'ok');
+  updateDupRemediationBar();
+  updateLocationAuditSelectionToolbar();
   updateAuditFlaggedStatusCount();
   maybeShowAuditEmptyState();
 }
@@ -3372,6 +3598,24 @@ function hideDupRemediationBar(){
   document.getElementById('locationAuditRemediationBar').style.display = 'none';
 }
 
+function updateLocationAuditSelectionToolbar(){
+  const bar = document.getElementById('locationAuditSelectionBar');
+  const countEl = document.getElementById('locationAuditSelectedCount');
+  const removeBtn = document.getElementById('locationAuditRemoveSelectedBtn');
+  const clearBtn = document.getElementById('locationAuditClearSelectionBtn');
+  const selectAllCb = document.getElementById('locationAuditSelectAllCb');
+  const total = locationAuditRowRefs.size;
+  const selected = locationAuditSelectedTokens.size;
+  if(countEl) countEl.textContent = selected;
+  if(removeBtn) removeBtn.disabled = selected === 0;
+  if(clearBtn) clearBtn.style.display = selected ? '' : 'none';
+  if(bar) bar.style.display = total ? 'flex' : 'none';
+  if(selectAllCb){
+    selectAllCb.checked = total > 0 && selected === total;
+    selectAllCb.indeterminate = selected > 0 && selected < total;
+  }
+}
+
 // Re-derives the "N flagged" count in the status line straight from
 // what's still on screen after a removal, rather than tracking a second
 // counter that could drift out of sync.
@@ -3379,14 +3623,14 @@ function updateAuditFlaggedStatusCount(){
   const statusEl = document.getElementById('locationAuditStatus');
   if(!statusEl) return;
   const remaining = locationAuditRowRefs.size;
-  const updated = statusEl.textContent.replace(/\d+(?= flagged)/, String(remaining));
+  const updated = statusEl.textContent.replace(/\d+(?= (?:flagged|still flagged))/, String(remaining));
   if(updated !== statusEl.textContent) statusEl.textContent = updated;
 }
 function maybeShowAuditEmptyState(){
   const resultsBody = document.getElementById('locationAuditResultsBody');
   const emptyEl = document.getElementById('locationAuditEmpty');
   if(resultsBody && !resultsBody.children.length){
-    emptyEl.textContent = 'Nothing flagged remaining — run the audit again anytime to check for anything new.';
+    emptyEl.textContent = 'Nothing flagged remaining — run a new audit anytime to check for anything new.';
     emptyEl.style.display = '';
   }
 }
@@ -3530,6 +3774,19 @@ function expandStreetAbbrev(s){
   parts[0] = words.join(' ');
   return parts.join(',');
 }
+// Strips legacy "OLD-" renumbering markers in whatever form they show up
+// in the source data — a bare "OLD-92 ..." prefix, a "(OLD)" parenthetical
+// tag, or both together ("OLD-(OLD) 1207-1209 ..."). Returns the address
+// unchanged if none of these patterns are present.
+function stripLegacyOldMarkers(s){
+  return s
+    .replace(/\bOLD[\s-]*\(OLD\)[\s-]*/gi, ' ')
+    .replace(/\(OLD\)[\s-]*/gi, ' ')
+    .replace(/\bOLD[\s-]+(?=\d)/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function buildAddressVariants(raw){
   const variants = [];
   const add = (s)=>{
@@ -3543,49 +3800,73 @@ function buildAddressVariants(raw){
   const deduped = dedupeSegments(raw);
   add(deduped);
 
-  // "OLD-92 WAGHORNE ST ..." / "...FLAT 1 OLD-92 WAGHORNE ST ..." — a
-  // legacy renumbering prefix that trips up the geocoder outright. Try
-  // the address with every "OLD-" (or "OLD ") stripped from in front of
-  // a house number, anywhere in the string.
-  if(/\bOLD[\s-]?\d/i.test(deduped)){
-    add(deduped.replace(/\bOLD[\s-]+(?=\d)/gi, ''));
-  }
+  // "OLD-92 WAGHORNE ST ..." / "OLD-(OLD) 1207-1209 JELLICOE ST ..." — a
+  // legacy renumbering marker that trips up the geocoder outright. Once
+  // stripped, treat the result as an equally valid base form for every
+  // rule below, not just this one — most of these addresses have more
+  // than one problem stacked together (see e.g. "FLAT 1 OLD-420 KARAMU
+  // ROAD ..." further down).
+  const oldStripped = stripLegacyOldMarkers(deduped);
+  const baseForms = oldStripped !== deduped ? [deduped, oldStripped] : [deduped];
+  baseForms.forEach(add);
 
-  // "1-2/209 MAIN NORTH RD ..." -> try "209 MAIN NORTH RD ..." and
-  // "1/209 MAIN NORTH RD ..."
-  let m = deduped.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
-  if(m){
-    add(m[3]);
-    add(`${m[1]}/${m[3]}`);
-  } else {
-    // "2/209 MAIN NORTH RD ..." -> also try without the unit
-    m = deduped.match(/^(\d+)\s*\/\s*(.+)$/);
-    if(m) add(m[2]);
-  }
-  // Same unit/number stripping, but applied after the "OLD-" prefix has
-  // already been removed — e.g. "OLD-8/6 BRIGHT CRES" -> "8/6 BRIGHT
-  // CRES" -> "6 BRIGHT CRES".
-  const oldStripped = deduped.replace(/\bOLD[\s-]+(?=\d)/gi, '');
-  if(oldStripped !== deduped){
-    m = oldStripped.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
-    if(m){ add(m[3]); add(`${m[1]}/${m[3]}`); }
-    else { m = oldStripped.match(/^(\d+)\s*\/\s*(.+)$/); if(m) add(m[2]); }
-  }
+  baseForms.forEach(base => {
+    // "1-2/209 MAIN NORTH RD ..." -> try "209 MAIN NORTH RD ..." and
+    // "1/209 MAIN NORTH RD ..."
+    let m = base.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(.+)$/);
+    if(m){
+      add(m[3]);
+      add(`${m[1]}/${m[3]}`);
+    } else {
+      // "2/209 MAIN NORTH RD ..." -> also try without the unit
+      m = base.match(/^(\d+)\s*\/\s*(.+)$/);
+      if(m) add(m[2]);
+    }
 
-  // "FLAT 1 - 3, 15 FRANKLYN ST ..." / "UNIT 4, ..." -> drop the leading
-  // unit clause (comma-separated form).
-  m = deduped.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+(?:\s*-\s*[0-9A-Za-z]+)?\s*,\s*(.+)$/i);
-  if(m) add(m[1]);
-  // "FLAT 3 75 RIVERBEND RD ..." — same idea but no comma after the unit
-  // number, so the house number runs straight into the street name.
-  m = deduped.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+\s+(\d+\s+.+)$/i);
-  if(m) add(m[1]);
+    // "715A - 715B WAVELL STREET ..." / "1207-1209 JELLICOE STREET ..."
+    // — a house-number range at the very start of the address, dash with
+    // or without surrounding spaces, either side can carry a letter
+    // suffix ("94A - 94B ...", "159A - 159B ..."). A geocoder generally
+    // can't resolve the range itself, but either single endpoint on its
+    // own usually works fine — try both.
+    m = base.match(/^(\d+[A-Za-z]?)\s*-\s*(\d+[A-Za-z]?)\s+(.+)$/);
+    if(m){
+      add(`${m[1]} ${m[3]}`);
+      add(`${m[2]} ${m[3]}`);
+    }
+
+    // "FLAT 1 - 3, 15 FRANKLYN ST ..." / "UNIT 4, ..." -> drop the
+    // leading unit clause (comma-separated form).
+    m = base.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+(?:\s*-\s*[0-9A-Za-z]+)?\s*,\s*(.+)$/i);
+    if(m) add(m[1]);
+    // "FLAT 3 75 RIVERBEND RD ..." — same idea but no comma after the
+    // unit number, so the house number runs straight into the street.
+    m = base.match(/^(?:FLAT|UNIT|APT|APARTMENT)\s+[0-9A-Za-z]+\s+(\d+\s+.+)$/i);
+    if(m) add(m[1]);
+
+    // Corner / dual-frontage properties like "50 RIVERBEND ROAD - 132
+    // LATHAM STREET MAREWA NAPIER 4110" or "159 BARTHOLOMEW ROAD & 43
+    // MIDDLESEX STREET, LEVIN, 5510" — two full addresses joined
+    // together, where the second one is usually already complete and
+    // resolvable on its own (it carries the suburb/postcode tail). Try
+    // the text after the LAST " - " or " & ", as long as it still looks
+    // like it has a real street name in it (not just a bare unit number,
+    // which the house-number-range rule above already handles).
+    [/\s-\s/, /\s&\s/].forEach(sep => {
+      const parts = base.split(sep);
+      if(parts.length > 1){
+        const tail = parts[parts.length-1].trim();
+        if(/[A-Za-z]{3,}/.test(tail)) add(tail);
+      }
+    });
+  });
 
   // last-resort: explicit country hint on the best variant so far
   if(variants[0] && !/new zealand/i.test(variants[0])) add(variants[0] + ', New Zealand');
 
   return variants;
 }
+
 
 async function nominatimLookup(query){
   const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nz&q=' + encodeURIComponent(query);
