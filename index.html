@@ -1048,9 +1048,13 @@
           <div class="progress-wrap" id="locationAuditProgressWrap">
             <div class="progress-bar"><div class="progress-fill" id="locationAuditProgressFill" style="width:0%;"></div></div>
           </div>
+          <div class="flex-between" id="locationAuditRemediationBar" style="display:none; margin-bottom:10px; background:var(--bg-inset); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px;">
+            <span style="font-size:12.5px; color:var(--text-dim);" id="locationAuditDupSummary"></span>
+            <button class="btn small danger ghost" id="locationAuditBulkRemoveDupBtn">Remove extra duplicates</button>
+          </div>
           <div class="db-scroll">
             <table class="db-table">
-              <thead><tr><th style="width:28%">Property ID</th><th style="width:42%">Address</th><th>Issue</th></tr></thead>
+              <thead><tr><th style="width:24%">Property ID</th><th style="width:38%">Address</th><th>Issue</th><th style="width:70px">Action</th></tr></thead>
               <tbody id="locationAuditResultsBody"></tbody>
             </table>
           </div>
@@ -3040,6 +3044,9 @@ let locationAuditRunning = false;
 let locationAuditCancelFlag = false;
 let locationAuditLastFlaggedCodes = null; // Set of codes flagged by the most recent run on this list
 let locationAuditLastListId = null;        // which list that was, so switching regions resets it
+let locationAuditRowRefs = new Map();      // token -> { p, region, isDup } for whatever's currently on screen
+let locationAuditRegionArrays = {};        // region -> the live array read from Firestore, so remediation can splice + save it directly
+let locationAuditRowTokenSeq = 1;
 
 function renderLocationAuditPanel(){
   document.getElementById('locationAuditListName').textContent =
@@ -3065,7 +3072,35 @@ function updateLocationAuditScopeOptions(){
 function bindLocationAudit(){
   document.getElementById('locationAuditRunBtn').addEventListener('click', runLocationAudit);
   document.getElementById('locationAuditCancelBtn').addEventListener('click', ()=>{ locationAuditCancelFlag = true; });
+  document.getElementById('locationAuditBulkRemoveDupBtn').addEventListener('click', bulkRemoveDuplicateAuditRows);
 }
+
+// Loads the active list's rows for the audit, tagging each row with the
+// region (property_list document) it actually lives in — needed so
+// remediation (removing one flagged duplicate row) can save back to the
+// correct per-region document even while viewing "Both regions (merged)".
+// Returns the same array objects Firestore was read into for each region,
+// so those arrays can be spliced and saved directly by the remove
+// handlers below rather than re-fetched.
+async function loadRegionTaggedRowsForAudit(listId){
+  locationAuditRegionArrays = {};
+  if(listId === 'ALL'){
+    const listsToLoad = (!isAdmin() && userProfile) ? myRegions() : ALL_REGION_IDS.slice();
+    const all = [];
+    for(const id of listsToLoad){
+      const arr = await loadPropertiesForList(id);
+      arr.forEach(r => { r._region = id; });
+      locationAuditRegionArrays[id] = arr;
+      all.push(...arr);
+    }
+    return all;
+  }
+  const arr = await loadPropertiesForList(listId);
+  arr.forEach(r => { r._region = listId; });
+  locationAuditRegionArrays[listId] = arr;
+  return arr;
+}
+
 async function runLocationAudit(){
   if(locationAuditRunning || !activeListId) return;
   locationAuditRunning = true;
@@ -3086,12 +3121,17 @@ async function runLocationAudit(){
   progressWrap.classList.add('show');
   resultsBody.innerHTML = '';
   emptyEl.style.display = 'none';
+  locationAuditRowRefs = new Map();
+  hideDupRemediationBar();
   let flaggedCount = 0, newlyLocatedCount = 0, reusedFromCacheCount = 0;
   const newlyFlaggedCodes = new Set();
 
   // Duplicate-ID detection always needs the full list for context, even
-  // when only re-checking a previously-flagged subset.
-  const allRows = await loadPropertiesForList(activeListId);
+  // when only re-checking a previously-flagged subset. Rows come back
+  // tagged with their source region (see loadRegionTaggedRowsForAudit)
+  // so a flagged duplicate can be removed from the right property list
+  // even while viewing "Both regions (merged)".
+  const allRows = await loadRegionTaggedRowsForAudit(activeListId);
   const codeCounts = {};
   allRows.forEach(p => { const c = (p.code||'').trim().toLowerCase(); if(c) codeCounts[c] = (codeCounts[c]||0) + 1; });
 
@@ -3109,7 +3149,8 @@ async function runLocationAudit(){
 
     const reasons = [];
     const codeKey = (p.code||'').trim().toLowerCase();
-    if(codeCounts[codeKey] > 1) reasons.push('Duplicate property ID appears more than once in this list');
+    const isDup = codeCounts[codeKey] > 1;
+    if(isDup) reasons.push('Duplicate property ID appears more than once in this list');
     if(!p.address || !p.address.trim()) reasons.push('No address on file');
 
     if(!reasons.includes('No address on file')){
@@ -3147,7 +3188,12 @@ async function runLocationAudit(){
     if(reasons.length){
       flaggedCount++;
       newlyFlaggedCodes.add(codeKey);
-      resultsBody.insertAdjacentHTML('beforeend', `<tr><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td></tr>`);
+      const token = 'r' + (locationAuditRowTokenSeq++);
+      locationAuditRowRefs.set(token, { p, region: p._region, isDup });
+      const actionHtml = isDup
+        ? `<button class="btn small danger ghost" data-act="removeAuditRow" data-token="${escapeAttr(token)}" style="padding:4px 8px;" title="Remove this one duplicate entry">Remove</button>`
+        : '';
+      resultsBody.insertAdjacentHTML('beforeend', `<tr data-token="${escapeAttr(token)}"><td>${escapeHtml(p.code)}</td><td>${escapeHtml(p.address||'')}</td><td>${escapeHtml(reasons.join('; '))}</td><td>${actionHtml}</td></tr>`);
     }
   }
 
@@ -3172,8 +3218,178 @@ async function runLocationAudit(){
   statusEl.textContent = stopped
     ? `Stopped — checked ${checked} of ${total}, ${flaggedCount} flagged. Run again anytime to pick up where this left off.`
     : `Done — checked ${total} (${reusedFromCacheCount} already saved, ${newlyLocatedCount} newly located and saved for next time), ${flaggedCount} flagged.`;
+
+  bindLocationAuditResultsClicks();
+  updateDupRemediationBar();
 }
 
+/* ---- remediation: remove flagged duplicate property IDs directly from
+   the audit results, without leaving Settings. A "Remove" button appears
+   only on rows flagged for the duplicate reason; there's also a bulk
+   "Remove extra duplicates" action that keeps the first entry in each
+   duplicate group and removes the rest in one go. Both splice the same
+   in-memory array Firestore was read into for that row's region and save
+   it back — so a merged "Both regions" audit still writes to the correct
+   single-region property list. ---- */
+function bindLocationAuditResultsClicks(){
+  const resultsBody = document.getElementById('locationAuditResultsBody');
+  resultsBody.onclick = (e)=>{
+    const btn = e.target.closest('[data-act="removeAuditRow"]');
+    if(!btn) return;
+    removeSingleAuditRow(btn.dataset.token, btn);
+  };
+}
+
+async function removeSingleAuditRow(token, btn){
+  const ref = locationAuditRowRefs.get(token);
+  if(!ref) return;
+  const { p, region } = ref;
+  if(!confirm(`Remove this entry — ${p.code} in ${regionLabel(region)} — "${p.address || '(no address)'}"?\n\nThis removes only this one duplicate row; any other entries with the same property ID are left untouched.`)) return;
+  if(btn) btn.disabled = true;
+  const arr = locationAuditRegionArrays[region];
+  const idx = arr ? arr.indexOf(p) : -1;
+  if(idx === -1){
+    toast('Could not find that row anymore — try running the audit again.', 'err');
+    if(btn) btn.disabled = false;
+    return;
+  }
+  arr.splice(idx, 1);
+  try{
+    await savePropertiesForList(region, arr);
+  }catch(err){
+    arr.splice(idx, 0, p);
+    toast('Could not remove that entry: ' + err.message, 'err');
+    if(btn) btn.disabled = false;
+    return;
+  }
+  locationAuditRowRefs.delete(token);
+  const tr = document.querySelector('#locationAuditResultsBody tr[data-token="' + token + '"]');
+  if(tr) tr.remove();
+  await syncActivePropertiesAfterAuditEdit(region);
+  toast(`Removed "${p.code}"`, 'ok');
+  updateDupRemediationBar();
+  updateAuditFlaggedStatusCount();
+  maybeShowAuditEmptyState();
+}
+
+async function bulkRemoveDuplicateAuditRows(){
+  // Group the currently-flagged duplicate rows by (region, property ID).
+  const groups = new Map();
+  for(const [token, ref] of locationAuditRowRefs.entries()){
+    if(!ref.isDup) continue;
+    const key = ref.region + '|' + (ref.p.code||'').trim().toLowerCase();
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ token, p: ref.p, region: ref.region });
+  }
+  // Within each group, keep the entry that appears first in its region's
+  // list and queue the rest for removal.
+  const toRemove = [];
+  for(const items of groups.values()){
+    if(items.length < 2) continue;
+    const arr = locationAuditRegionArrays[items[0].region];
+    items.sort((a,b)=> (arr ? arr.indexOf(a.p) : 0) - (arr ? arr.indexOf(b.p) : 0));
+    toRemove.push(...items.slice(1));
+  }
+  if(!toRemove.length){
+    toast('Nothing to bulk-remove — no duplicate group here has more than one entry left.', 'err');
+    return;
+  }
+  if(!confirm(`Remove ${toRemove.length} extra duplicate row${toRemove.length>1?'s':''}? For every property ID that appears more than once, this keeps the first entry and removes the rest. This can't be undone.`)) return;
+
+  const bulkBtn = document.getElementById('locationAuditBulkRemoveDupBtn');
+  bulkBtn.disabled = true;
+
+  // One save per affected region (not one per row) to keep this efficient
+  // even when there are dozens/hundreds of extra duplicates.
+  const byRegion = new Map();
+  toRemove.forEach(item => {
+    if(!byRegion.has(item.region)) byRegion.set(item.region, []);
+    byRegion.get(item.region).push(item);
+  });
+
+  let removedCount = 0;
+  const touchedRegions = [];
+  for(const [region, items] of byRegion.entries()){
+    const arr = locationAuditRegionArrays[region];
+    if(!arr) continue;
+    items.forEach(item => {
+      const idx = arr.indexOf(item.p);
+      if(idx !== -1) arr.splice(idx, 1);
+    });
+    try{
+      await savePropertiesForList(region, arr);
+      touchedRegions.push(region);
+      removedCount += items.length;
+      items.forEach(item => {
+        locationAuditRowRefs.delete(item.token);
+        const tr = document.querySelector('#locationAuditResultsBody tr[data-token="' + item.token + '"]');
+        if(tr) tr.remove();
+      });
+    }catch(err){
+      toast(`Could not save changes to ${regionLabel(region)}: ` + err.message, 'err');
+    }
+  }
+
+  for(const region of touchedRegions) await syncActivePropertiesAfterAuditEdit(region);
+
+  bulkBtn.disabled = false;
+  updateDupRemediationBar();
+  if(removedCount) toast(`Removed ${removedCount} duplicate row${removedCount>1?'s':''}`, 'ok');
+  updateAuditFlaggedStatusCount();
+  maybeShowAuditEmptyState();
+}
+
+// Keeps the Property DB tab / Job-tab search list in sync with anything
+// removed here, without a full unrelated reload — only refetches when the
+// region touched is actually part of what's currently loaded into State.
+async function syncActivePropertiesAfterAuditEdit(region){
+  if(!activeListId) return;
+  if(activeListId === region || activeListId === 'ALL'){
+    State.properties = await loadPropertiesForList(activeListId);
+    renderDbCount(); renderDbTable();
+  }
+}
+
+function updateDupRemediationBar(){
+  const bar = document.getElementById('locationAuditRemediationBar');
+  const summary = document.getElementById('locationAuditDupSummary');
+  const groups = new Map();
+  for(const ref of locationAuditRowRefs.values()){
+    if(!ref.isDup) continue;
+    const key = ref.region + '|' + (ref.p.code||'').trim().toLowerCase();
+    groups.set(key, (groups.get(key)||0) + 1);
+  }
+  let extra = 0;
+  groups.forEach(n => { if(n > 1) extra += n - 1; });
+  if(extra > 0){
+    summary.textContent = `${extra} extra duplicate row${extra>1?'s':''} can be removed automatically (keeping one entry per property ID).`;
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+function hideDupRemediationBar(){
+  document.getElementById('locationAuditRemediationBar').style.display = 'none';
+}
+
+// Re-derives the "N flagged" count in the status line straight from
+// what's still on screen after a removal, rather than tracking a second
+// counter that could drift out of sync.
+function updateAuditFlaggedStatusCount(){
+  const statusEl = document.getElementById('locationAuditStatus');
+  if(!statusEl) return;
+  const remaining = locationAuditRowRefs.size;
+  const updated = statusEl.textContent.replace(/\d+(?= flagged)/, String(remaining));
+  if(updated !== statusEl.textContent) statusEl.textContent = updated;
+}
+function maybeShowAuditEmptyState(){
+  const resultsBody = document.getElementById('locationAuditResultsBody');
+  const emptyEl = document.getElementById('locationAuditEmpty');
+  if(resultsBody && !resultsBody.children.length){
+    emptyEl.textContent = 'Nothing flagged remaining — run the audit again anytime to check for anything new.';
+    emptyEl.style.display = '';
+  }
+}
 
 function clearResolvedProperty(){
   State.currentProperty = null;
